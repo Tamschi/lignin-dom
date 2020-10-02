@@ -1,0 +1,20 @@
+[package]
+name = "lignin-dom"
+version = "0.0.0"
+authors = ["Tamme Schichler <tamme@schichler.dev>"]
+edition = "2018"
+publish = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+holyhashmap = "0.1.2"
+lignin = { path = "../lignin", features = ["bumpalo"] }
+log = "0.4.8"
+wasm-bindgen = "=0.2.58" # Needs to match wasm-bindgen-cli version in ../secale-frontend.Dockerfile.
+web-sys = { version = "0.3.33", features = ["Attr", "CharacterData", "Comment", "Document", "Element", "EventTarget", "NamedNodeMap", "Node", "NodeList", "Text"] }
+
+[features]
+bumpalo-collections = ["lignin/bumpalo-collections"]
+debug = ["lignin/debug"]
+remnants = ["lignin/remnants"]

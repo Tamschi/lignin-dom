@@ -1,0 +1,1 @@
+- Use https://rustwasm.github.io/wasm-bindgen/api/wasm_bindgen/fn.intern.html to intern element names.
