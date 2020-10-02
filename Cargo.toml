@@ -1,20 +1,47 @@
 [package]
 name = "lignin-dom"
-version = "0.0.0"
+version = "0.0.1"
 authors = ["Tamme Schichler <tamme@schichler.dev>"]
 edition = "2018"
+description = "TODO_DESCRIPTION"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Tamschi/lignin-dom"
+homepage = "https://github.com/Tamschi/lignin-dom/tree/v0.0.1"
+documentation = "https://docs.rs/lignin-dom/0.0.1"
+keywords = ["VDOM", "DOM", "diff", "two-way"]
+categories = ["web-programming", "wasm"]
+readme = "README.md"
+include = [
+	"**/*.rs",
+	"!tests/unincluded_*.rs", # Tests of meta data files not included in the package.
+	"Cargo.toml",
+	"CHANGELOG.md",
+	"CODE_OF_CONDUCT.md",
+	"LICENSE-*",
+	"README.md",
+]
 publish = false
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-holyhashmap = "0.1.2"
-lignin = { path = "../lignin", features = ["bumpalo"] }
-log = "0.4.8"
-wasm-bindgen = "=0.2.58" # Needs to match wasm-bindgen-cli version in ../secale-frontend.Dockerfile.
-web-sys = { version = "0.3.33", features = ["Attr", "CharacterData", "Comment", "Document", "Element", "EventTarget", "NamedNodeMap", "Node", "NodeList", "Text"] }
+[badges]
+travis-ci = { repository = "Tamschi/lignin-dom", branch = "develop" }
+is-it-maintained-issue-resolution = { repository = "Tamschi/lignin-dom" }
+is-it-maintained-open-issues = { repository = "Tamschi/lignin-dom" }
+maintenance = { status = "experimental" }
 
 [features]
 bumpalo-collections = ["lignin/bumpalo-collections"]
 debug = ["lignin/debug"]
 remnants = ["lignin/remnants"]
+
+[dependencies]
+holyhashmap = "0.1.2"
+lignin = { version = "0.0.1", features = ["bumpalo"] } # public
+log = "0.4.8"
+wasm-bindgen = "0.2.58" # public-ish
+web-sys = { version = "0.3.33", features = ["Attr", "CharacterData", "Comment", "Document", "Element", "EventTarget", "NamedNodeMap", "Node", "NodeList", "Text"] }
+
+[dev-dependencies]
+cargo-husky = "1.5.0"
+doc-comment = "0.3.3"
+git_info = "0.1.2"
+version-sync = "0.9.1"
