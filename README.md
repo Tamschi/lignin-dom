@@ -17,7 +17,10 @@ A DOM differ for [lignin].
 
 Aside from diffing lignin `Node`s to adjust HTML elements, it's also possible to construct `Node` trees from HTML elements.
 
+To generate HTML strings, use [lignin-html] instead.
+
 [lignin]: https://github.com/Tamschi/lignin
+[lignin-html]: https://github.com/Tamschi/lignin-html
 
 ## Installation
 
