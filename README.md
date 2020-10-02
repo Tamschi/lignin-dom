@@ -5,7 +5,7 @@
 [![Docs.rs](https://docs.rs/lignin-dom/badge.svg)](https://docs.rs/crates/lignin-dom)
 
 ![Rust 1.40.0](https://img.shields.io/static/v1?logo=Rust&label=&message=1.40.0&color=grey)
-[![Build Status](https://travis-ci.com/Tamschi/lignin-dom.svg?branch=develop)](https://travis-ci.com/Tamschi/lignin-dom/branches)
+[![Build Status](https://travis-ci.com/Tamschi/lignin-dom.svg?branch=unstable)](https://travis-ci.com/Tamschi/lignin-dom/branches)
 ![Crates.io - License](https://img.shields.io/crates/l/lignin-dom/0.0.1)
 
 [![GitHub](https://img.shields.io/static/v1?logo=GitHub&label=&message=%20&color=grey)](https://github.com/Tamschi/lignin-dom)
