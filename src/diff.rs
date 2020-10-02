@@ -127,7 +127,7 @@ unsafe fn update_child_nodes_at<'a, 'b, 'd>(
 				todo!("Unhandled new node: {:?}", new_node);
 				#[cfg(not(feature = "debug"))]
 				todo!("Unhandled new node");
-			},
+			}
 		};
 		if let Some(new_node) = new_node {
 			dom.insert_before(&new_node, next_child.as_ref()).unwrap();
