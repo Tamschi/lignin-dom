@@ -56,7 +56,13 @@ unsafe fn update_child_nodes_at<'a, 'b, 'd>(
 			(Element(a), Element(b), d) if a.name == b.name => {
 				update_element(a, b, d.dyn_ref::<wElement>().expect("TODO"));
 			}
-			abi => todo!("Unhandled child node diff: {:?}", abi),
+			#[allow(unused_variables)]
+			abi => {
+				#[cfg(feature = "debug")]
+				todo!("Unhandled child node diff: {:?}", abi);
+				#[cfg(not(feature = "debug"))]
+				todo!("Unhandled child node diff");
+			}
 		};
 		vdom_a = &vdom_a[1..];
 		vdom_b = &vdom_b[1..];
@@ -115,7 +121,13 @@ unsafe fn update_child_nodes_at<'a, 'b, 'd>(
 				update_child_nodes_at(&[], m, dom, i);
 				None
 			}
-			new_node => todo!("Unhandled new node: {:?}", new_node),
+			#[allow(unused_variables)]
+			new_node => {
+				#[cfg(feature = "debug")]
+				todo!("Unhandled new node: {:?}", new_node);
+				#[cfg(not(feature = "debug"))]
+				todo!("Unhandled new node");
+			},
 		};
 		if let Some(new_node) = new_node {
 			dom.insert_before(&new_node, next_child.as_ref()).unwrap();
