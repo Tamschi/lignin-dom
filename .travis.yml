@@ -32,4 +32,4 @@ jobs:
   allow_failures:
     - rust: nightly
   fast_finish: true
-cache: cargo
+# cache: cargo # The cache gets too big over time, failing CI. It's probably more efficient uncached in this case, anyway.
