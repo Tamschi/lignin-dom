@@ -6,7 +6,7 @@ use wasm_bindgen::closure::Closure;
 
 thread_local! {
 	#[allow(clippy::type_complexity)]
-	static CLOSURE_MAP: Mutex<HolyHashMap<(*const dyn Any, *const dyn Fn(&dyn Any)), Closure<dyn Fn()>>> = Default::default();
+	static CLOSURE_MAP: Mutex<HolyHashMap<(*const dyn Any, *const dyn Fn(&dyn Any)), Closure<dyn Fn()>>> = Mutex::default();
 }
 
 //TODO: Reference-counting to support closures used more than once.
