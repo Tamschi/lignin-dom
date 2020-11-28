@@ -5,7 +5,6 @@ use log::trace;
 use wasm_bindgen::JsCast;
 use web_sys::{Comment as wComment, Element as wElement, Node as wNode, Text as wText};
 
-#[cfg(feature = "remnants")]
 use lignin::remnants::RemnantSite;
 
 /// # Safety
@@ -79,7 +78,6 @@ unsafe fn update_child_nodes_at<'a, 'b, 'd>(
 			}
 			Node::Ref(&referenced) => update_child_nodes_at(&[referenced], &[], dom, i),
 			Node::Multi(multi) => update_child_nodes_at(multi, &[], dom, i),
-			#[cfg(feature = "remnants")]
 			Node::RemnantSite(&RemnantSite { content, .. }) => {
 				update_child_nodes_at(&[*content], &[], dom, i)
 			}
@@ -156,7 +154,6 @@ unsafe fn unpublish_closures(node: &Node<'_>) {
 	match *node {
 		Node::Comment(_) | Node::Text(_) => (),
 		Node::Ref(reference) => unpublish_closures(reference),
-		#[cfg(feature = "remnants")]
 		Node::RemnantSite(RemnantSite { content, .. }) => unpublish_closures(content),
 		Node::Multi(multi) => {
 			for node in multi {

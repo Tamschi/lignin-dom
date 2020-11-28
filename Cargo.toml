@@ -31,11 +31,10 @@ maintenance = { status = "experimental" }
 [features]
 bumpalo-collections = ["lignin/bumpalo-collections"]
 debug = ["lignin/debug"]
-remnants = ["lignin/remnants"]
 
 [dependencies]
 holyhashmap = "0.1.2"
-lignin = { version = "0.0.1", features = ["bumpalo"] } # public
+lignin = "0.0.2" # public
 log = "0.4.8"
 wasm-bindgen = "0.2.58" # public-ish
 web-sys = { version = "0.3.33", features = ["Attr", "CharacterData", "Comment", "Document", "Element", "EventTarget", "NamedNodeMap", "Node", "NodeList", "Text"] }
