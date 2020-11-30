@@ -23,7 +23,6 @@ include = [
 publish = false
 
 [badges]
-travis-ci = { repository = "Tamschi/lignin-dom", branch = "develop" }
 is-it-maintained-issue-resolution = { repository = "Tamschi/lignin-dom" }
 is-it-maintained-open-issues = { repository = "Tamschi/lignin-dom" }
 maintenance = { status = "experimental" }
