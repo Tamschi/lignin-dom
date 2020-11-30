@@ -1,13 +1,13 @@
 [package]
 name = "lignin-dom"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["Tamme Schichler <tamme@schichler.dev>"]
 edition = "2018"
 description = "A DOM differ for lignin. Aside from diffing lignin Nodes to adjust HTML elements, it's also possible to construct Node trees from HTML elements."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Tamschi/lignin-dom"
-homepage = "https://github.com/Tamschi/lignin-dom/tree/v0.0.1"
-documentation = "https://docs.rs/lignin-dom/0.0.1"
+homepage = "https://github.com/Tamschi/lignin-dom/tree/v0.0.2"
+documentation = "https://docs.rs/lignin-dom/0.0.2"
 keywords = ["VDOM", "DOM", "diff", "two-way"]
 categories = ["web-programming", "wasm"]
 readme = "README.md"
