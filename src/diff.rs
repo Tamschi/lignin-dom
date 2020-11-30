@@ -5,7 +5,6 @@ use log::trace;
 use wasm_bindgen::JsCast;
 use web_sys::{Comment as wComment, Element as wElement, Node as wNode, Text as wText};
 
-#[cfg(feature = "remnants")]
 use lignin::remnants::RemnantSite;
 
 /// # Safety
@@ -37,7 +36,7 @@ unsafe fn update_child_nodes_at<'a, 'b, 'd>(
 ) {
 	let dom_children = dom.child_nodes();
 	while !vdom_a.is_empty() && !vdom_b.is_empty() {
-		use Node::*;
+		use Node::{Comment, Element, Text};
 		match (
 			&vdom_a[0],
 			&vdom_b[0],
@@ -79,7 +78,6 @@ unsafe fn update_child_nodes_at<'a, 'b, 'd>(
 			}
 			Node::Ref(&referenced) => update_child_nodes_at(&[referenced], &[], dom, i),
 			Node::Multi(multi) => update_child_nodes_at(multi, &[], dom, i),
-			#[cfg(feature = "remnants")]
 			Node::RemnantSite(&RemnantSite { content, .. }) => {
 				update_child_nodes_at(&[*content], &[], dom, i)
 			}
@@ -90,7 +88,7 @@ unsafe fn update_child_nodes_at<'a, 'b, 'd>(
 	let document = dom.owner_document().expect("TODO: No owner document.");
 	let next_child = dom.child_nodes().item(*i); // None if i == dom.child_nodes().length().
 	for new_node in vdom_b {
-		use Node::*;
+		use Node::{Comment, Element, Multi, Text};
 		let new_node: Option<wNode> = match new_node {
 			Comment(c) => Some(document.create_comment(c).into()),
 			Text(t) => Some(document.create_text_node(t).into()),
@@ -156,7 +154,6 @@ unsafe fn unpublish_closures(node: &Node<'_>) {
 	match *node {
 		Node::Comment(_) | Node::Text(_) => (),
 		Node::Ref(reference) => unpublish_closures(reference),
-		#[cfg(feature = "remnants")]
 		Node::RemnantSite(RemnantSite { content, .. }) => unpublish_closures(content),
 		Node::Multi(multi) => {
 			for node in multi {

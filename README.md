@@ -5,8 +5,8 @@
 [![Docs.rs](https://docs.rs/lignin-dom/badge.svg)](https://docs.rs/crates/lignin-dom)
 
 ![Rust 1.40.0](https://img.shields.io/static/v1?logo=Rust&label=&message=1.40.0&color=grey)
-[![Build Status](https://travis-ci.com/Tamschi/lignin-dom.svg?branch=unstable)](https://travis-ci.com/Tamschi/lignin-dom/branches)
-![Crates.io - License](https://img.shields.io/crates/l/lignin-dom/0.0.1)
+[![CI](https://github.com/Tamschi/lignin-dom/workflows/CI/badge.svg?branch=unstable)](https://github.com/Tamschi/lignin-dom/actions?query=workflow%3ACI+branch%3Aunstable)
+![Crates.io - License](https://img.shields.io/crates/l/lignin-dom/0.0.2)
 
 [![GitHub](https://img.shields.io/static/v1?logo=GitHub&label=&message=%20&color=grey)](https://github.com/Tamschi/lignin-dom)
 [![open issues](https://img.shields.io/github/issues-raw/Tamschi/lignin-dom)](https://github.com/Tamschi/lignin-dom/issues)
@@ -17,7 +17,10 @@ A DOM differ for [lignin].
 
 Aside from diffing lignin `Node`s to adjust HTML elements, it's also possible to construct `Node` trees from HTML elements.
 
+To generate HTML strings, use [lignin-html] instead.
+
 [lignin]: https://github.com/Tamschi/lignin
+[lignin-html]: https://github.com/Tamschi/lignin-html
 
 ## Installation
 

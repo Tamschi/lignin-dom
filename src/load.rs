@@ -1,10 +1,13 @@
+#![allow(clippy::module_name_repetitions)]
+
 use lignin::{bumpalo::Bump, Attribute, Element as lElement, Node};
+use std::convert::TryInto;
 use wasm_bindgen::JsCast;
 use web_sys::{Attr, Element, NamedNodeMap, Node as wNode, NodeList, Text};
 
 pub fn load_child_nodes<'a>(child_nodes: &NodeList, bump: &'a Bump) -> &'a [Node<'a>] {
 	bump.alloc_slice_fill_with(child_nodes.length() as usize, |i| {
-		let child = child_nodes.item(i as u32).unwrap();
+		let child = child_nodes.item(i.try_into().unwrap()).unwrap();
 		if let Some(element) = child.dyn_ref::<Element>() {
 			Node::Element(bump.alloc_with(|| load_element(element, bump)))
 		} else if let Some(text) = child.dyn_ref::<Text>() {
@@ -27,7 +30,7 @@ pub fn load_element<'a>(element: &Element, bump: &'a Bump) -> lElement<'a> {
 
 pub fn load_attributes<'a>(attributes: &NamedNodeMap, bump: &'a Bump) -> &'a [Attribute<'a>] {
 	bump.alloc_slice_fill_with(attributes.length() as usize, |i| {
-		load_attribute(&attributes.item(i as u32).unwrap(), bump)
+		load_attribute(&attributes.item(i.try_into().unwrap()).unwrap(), bump)
 	})
 }
 
