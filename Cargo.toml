@@ -35,7 +35,7 @@ debug = ["lignin/debug"]
 holyhashmap = "0.1.2"
 lignin = "0.0.2" # public
 log = "0.4.8"
-wasm-bindgen = "0.2.58" # public-ish
+wasm-bindgen = "0.2.68" # public-ish
 web-sys = { version = "0.3.33", features = ["Attr", "CharacterData", "Comment", "Document", "Element", "EventTarget", "NamedNodeMap", "Node", "NodeList", "Text"] }
 
 [dev-dependencies]
