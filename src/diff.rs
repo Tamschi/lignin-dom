@@ -106,7 +106,7 @@ unsafe fn update_child_nodes_at<'a, 'b, 'd>(
 							closure_map::publish(
 								//SAFETY: See safety section in this function's documentation.
 								extend_reference(event_binding.context),
-								extend_fn_reference(event_binding.handler),
+								extend_fn_reference(&*event_binding.handler),
 							)
 							.as_ref()
 							.unchecked_ref(),
@@ -170,7 +170,7 @@ unsafe fn unpublish_closures(node: &Node<'_>) {
 			}
 			for event_binding in event_bindings {
 				trace!("unpublishing closure for event {:?}", event_binding.name);
-				closure_map::unpublish(event_binding.context, event_binding.handler)
+				closure_map::unpublish(event_binding.context, &*event_binding.handler)
 			}
 		}
 		_ => todo!(),
