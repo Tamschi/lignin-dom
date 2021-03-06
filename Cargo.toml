@@ -27,13 +27,8 @@ is-it-maintained-issue-resolution = { repository = "Tamschi/lignin-dom" }
 is-it-maintained-open-issues = { repository = "Tamschi/lignin-dom" }
 maintenance = { status = "experimental" }
 
-[features]
-bumpalo-collections = ["lignin/bumpalo-collections"]
-debug = ["lignin/debug"]
-
 [dependencies]
-holyhashmap = "0.1.2"
-lignin = { git = "https://github.com/Tamschi/lignin.git", branch = "rework-2021-02" } # public
+lignin = { git = "https://github.com/Tamschi/lignin.git", branch = "rework-2021-02", features = ["callbacks"] } # public
 log = "0.4.8"
 wasm-bindgen = "0.2.68" # public-ish
 web-sys = { version = "0.3.33", features = ["Attr", "CharacterData", "Comment", "Document", "Element", "EventTarget", "NamedNodeMap", "Node", "NodeList", "Text"] }

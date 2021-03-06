@@ -8,6 +8,5 @@ pub mod readme {
 	doc_comment::doctest!("../README.md");
 }
 
-mod closure_map;
-pub mod diff;
+// pub mod diff;
 pub mod load;
