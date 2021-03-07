@@ -1,188 +1,193 @@
-use crate::closure_map;
-use core::{any::Any, mem::transmute};
-use lignin::{Element, Node};
-use log::trace;
+use core::slice;
+
+use lignin::{web, CallbackRef, DomRef, ThreadBound};
+use log::{trace, warn};
 use wasm_bindgen::JsCast;
-use web_sys::{Comment as wComment, Element as wElement, Node as wNode, Text as wText};
 
 use lignin::remnants::RemnantSite;
 
-/// # Safety
-///
-/// Any DOM structure created by this function must be either:
-///
-/// - destroyed before 'b ends or
-/// - updated such that `vdom_b` in this call is passed as `vdom_a` in that call.
-pub unsafe fn update_child_nodes<'a, 'b, 'd>(
-	vdom_a: &'a [Node<'a>],
-	vdom_b: &'b [Node<'b>],
-	dom: &'d wNode,
-) {
-	update_child_nodes_at(vdom_a, vdom_b, dom, &mut 0)
+pub fn update_child_nodes(
+	vdom_a: &[lignin::Node<'_, ThreadBound>],
+	vdom_b: &[lignin::Node<'_, ThreadBound>],
+	dom: &web_sys::Node,
+	depth_limit: usize,
+) -> Result<(), Error> {
+	diff_splice_node_list(vdom_a, vdom_b, &dom.child_nodes(), &mut 0, depth_limit)
 }
 
-/// # Safety
-///
-/// Any DOM structure created by this function must be either:
-///
-/// - destroyed before 'b ends or
-/// - updated such that `vdom_b` in this call is passed as `vdom_a` in that call.
 //TODO: This is currently pretty panic-happy on unexpected DOM structure.
-unsafe fn update_child_nodes_at<'a, 'b, 'd>(
-	mut vdom_a: &'a [Node<'a>],
-	mut vdom_b: &'b [Node<'b>],
-	dom: &'d wNode,
+fn diff_splice_node_list(
+	vdom_a: &[lignin::Node<'_, ThreadBound>],
+	vdom_b: &[lignin::Node<'_, ThreadBound>],
+	dom_slice: &web_sys::NodeList,
 	i: &mut u32,
-) {
-	let dom_children = dom.child_nodes();
-	while !vdom_a.is_empty() && !vdom_b.is_empty() {
-		use Node::{Comment, Element, Text};
-		match (
-			&vdom_a[0],
-			&vdom_b[0],
-			&dom_children.item(*i).expect("TODO"),
-		) {
-			(Comment(a), Comment(b), d) => {
-				if a != b {
-					d.dyn_ref::<wComment>().expect("TODO").set_data(b);
+	depth_limit: usize,
+) -> Result<(), Error> {
+	if depth_limit == 0 {
+		return Err(Error(ErrorKind::DepthLimitReached));
+	}
+
+	let mut vdom_a = vdom_a.iter();
+	let mut vdom_b = vdom_b.iter();
+	while !vdom_a.len() > 0 && !vdom_b.len() > 0 {
+		let node = dom_slice
+			.get(*i)
+			.ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
+
+		match (vdom_a.next().unwrap(), vdom_b.next().unwrap()) {
+			(
+				&lignin::Node::Comment {
+					comment: c_1,
+					dom_binding: db_1,
+				},
+				&lignin::Node::Comment {
+					comment: c_2,
+					dom_binding: db_2,
+				},
+			) => {
+				let comment = node
+					.dyn_ref::<web_sys::Comment>()
+					.ok_or_else(|| Error(ErrorKind::ExpectedComment(node.clone())))?;
+				let guard = unlock(db_1, db_2, &mut || comment.clone().into());
+				if c_1 != c_2 {
+					comment.set_data(c_2)
 				}
 			}
-			(Text(a), Text(b), d) => {
-				if a != b {
-					d.dyn_ref::<wText>().expect("TODO").set_data(b);
+
+			(
+				&lignin::Node::Element {
+					element: e_1,
+					dom_binding: db_1,
+				},
+				&lignin::Node::Element {
+					element: e_2,
+					dom_binding: db_2,
+				},
+			) => {
+				let element = node
+					.dyn_ref::<web_sys::HtmlElement>()
+					.ok_or_else(|| Error(ErrorKind::ExpectedElement(node.clone())))?;
+				let guard = unlock(db_1, db_2, &mut || element.clone().into());
+				todo!("`Element` diff")
+			}
+
+			(
+				&lignin::Node::Memoized {
+					state_key: sk_1,
+					content: c_1,
+				},
+				&lignin::Node::Memoized {
+					state_key: sk_2,
+					content: c_2,
+				},
+			) => {
+				if sk_1 != sk_2 {
+					diff_splice_node_list(
+						slice::from_ref(c_1),
+						slice::from_ref(c_2),
+						dom_slice,
+						i,
+						depth_limit - 1,
+					)?
 				}
 			}
-			(Element(a), Element(b), d) if a.name == b.name => {
-				update_element(a, b, d.dyn_ref::<wElement>().expect("TODO"));
+
+			(&lignin::Node::Multi(n_1), &lignin::Node::Multi(n_2)) => {
+				diff_splice_node_list(n_1, n_2, dom_slice, i, depth_limit - 1)?
 			}
-			#[allow(unused_variables)]
-			abi => {
-				#[cfg(feature = "debug")]
-				todo!("Unhandled child node diff: {:?}", abi);
-				#[cfg(not(feature = "debug"))]
-				todo!("Unhandled child node diff");
+
+			(lignin::Node::Keyed(_), lignin::Node::Keyed(_)) => {
+				todo!()
 			}
-		};
-		vdom_a = &vdom_a[1..];
-		vdom_b = &vdom_b[1..];
+
+			(
+				&lignin::Node::Text {
+					text: t_1,
+					dom_binding: db_1,
+				},
+				&lignin::Node::Text {
+					text: t_2,
+					dom_binding: db_2,
+				},
+			) => {
+				let text = node
+					.dyn_ref::<web_sys::Text>()
+					.ok_or_else(|| Error(ErrorKind::ExpectedText(node.clone())))?;
+				let guard = unlock(db_1, db_2, &mut || text.clone().into());
+				if t_1 != t_2 {
+					text.set_data(t_2)
+				}
+			}
+
+			(lignin::Node::RemnantSite(_), lignin::Node::RemnantSite(_)) => {
+				todo!("`RemnantSite` diff")
+			}
+
+			// Mismatching nodes: Destroy and rebuild.
+			(n_1, n_2) => {
+				trace!("Replace mismatching");
+				diff_splice_node_list(slice::from_ref(n_1), &[], dom_slice, i, depth_limit)?;
+				diff_splice_node_list(&[], slice::from_ref(n_2), dom_slice, i, depth_limit)?;
+			}
+		}
 		*i += 1;
 	}
+	
 	for removed_node in vdom_a {
-		match *removed_node {
-			Node::Comment(_) | Node::Element(_) | Node::Text(_) => {
-				dom.remove_child(&dom.child_nodes().item(*i).expect("TODO"))
-					.unwrap();
-				//SAFETY: Once the child is gone from the DOM, there should be no way to still call this event.
-				//TODO?: Call this only after creating new nodes so that reference counting works better?
-				unpublish_closures(removed_node);
-			}
-			Node::Ref(&referenced) => update_child_nodes_at(&[referenced], &[], dom, i),
-			Node::Multi(multi) => update_child_nodes_at(multi, &[], dom, i),
-			Node::RemnantSite(&RemnantSite { content, .. }) => {
-				update_child_nodes_at(&[*content], &[], dom, i)
-			}
-			_ => todo!("Removing this kind of Node is unimplemented"),
-		}
+		todo!()
 	}
 
 	let document = dom.owner_document().expect("TODO: No owner document.");
 	let next_child = dom.child_nodes().item(*i); // None if i == dom.child_nodes().length().
 	for new_node in vdom_b {
-		use Node::{Comment, Element, Multi, Text};
-		let new_node: Option<wNode> = match new_node {
-			Comment(c) => Some(document.create_comment(c).into()),
-			Text(t) => Some(document.create_text_node(t).into()),
-			Element(e) => {
-				let element = document.create_element(e.name).expect("TODO");
-				for a in e.attributes {
-					element.set_attribute(a.name, a.value).unwrap();
-				}
-				update_child_nodes(&[], e.content, element.as_ref());
-				for event_binding in e.event_bindings {
-					trace!("Binding event {:?}", event_binding.name);
-					element
-						.add_event_listener_with_callback(
-							event_binding.name,
-							closure_map::publish(
-								//SAFETY: See safety section in this function's documentation.
-								extend_reference(event_binding.context),
-								extend_fn_reference(&*event_binding.handler),
-							)
-							.as_ref()
-							.unchecked_ref(),
-						)
-						.expect("TODO")
-				}
-				Some(element.into())
+		todo!()
+	}
+
+	Ok(())
+}
+
+//FIXME: It would generally be better to pass JS objects by reference here.
+#[must_use]
+fn unlock<'a, T>(
+	previous: Option<CallbackRef<ThreadBound, DomRef<T>>>,
+	next: Option<CallbackRef<ThreadBound, DomRef<T>>>,
+	get_parameter: &'a mut dyn FnMut() -> T,
+) -> impl 'a + Drop {
+	#![allow(clippy::items_after_statements)]
+
+	return if previous == next {
+		BindingTransition {
+			next: None,
+			get_parameter,
+		}
+	} else {
+		if let Some(previous) = previous {
+			previous.call(DomRef::Removing(get_parameter()));
+		}
+		BindingTransition {
+			next,
+			get_parameter,
+		}
+	};
+
+	struct BindingTransition<'a, T> {
+		next: Option<CallbackRef<ThreadBound, DomRef<T>>>,
+		get_parameter: &'a mut dyn FnMut() -> T,
+	}
+	impl<'a, T> Drop for BindingTransition<'a, T> {
+		fn drop(&mut self) {
+			if let Some(next) = self.next {
+				next.call(DomRef::Added((self.get_parameter)()));
 			}
-			Multi(m) => {
-				update_child_nodes_at(&[], m, dom, i);
-				None
-			}
-			#[allow(unused_variables)]
-			new_node => {
-				#[cfg(feature = "debug")]
-				todo!("Unhandled new node: {:?}", new_node);
-				#[cfg(not(feature = "debug"))]
-				todo!("Unhandled new node");
-			}
-		};
-		if let Some(new_node) = new_node {
-			dom.insert_before(&new_node, next_child.as_ref()).unwrap();
-			*i += 1;
 		}
 	}
 }
 
-/// # Safety
-///
-/// Any DOM structure created by this function must be either:
-///
-/// - destroyed before 'b ends or
-/// - updated such that `vdom_b` in this call is passed as `vdom_a` in that call.
-//TODO: This is currently pretty panic-happy on unexpected DOM structure.
-pub unsafe fn update_element<'a, 'b, 'd>(
-	vdom_a: &'a Element<'a>,
-	vdom_b: &'b Element<'b>,
-	dom: &'d wElement,
-) {
-	update_child_nodes(vdom_a.content, vdom_b.content, dom);
-	todo!("Update attributes and event bindings.");
-}
-
-unsafe fn unpublish_closures(node: &Node<'_>) {
-	match *node {
-		Node::Comment(_) | Node::Text(_) => (),
-		Node::Ref(reference) => unpublish_closures(reference),
-		Node::RemnantSite(RemnantSite { content, .. }) => unpublish_closures(content),
-		Node::Multi(multi) => {
-			for node in multi {
-				unpublish_closures(node)
-			}
-		}
-		Node::Element(&Element {
-			content,
-			event_bindings,
-			..
-		}) => {
-			for child in content {
-				unpublish_closures(child)
-			}
-			for event_binding in event_bindings {
-				trace!("unpublishing closure for event {:?}", event_binding.name);
-				closure_map::unpublish(event_binding.context, &*event_binding.handler)
-			}
-		}
-		_ => todo!(),
-	}
-}
-
-unsafe fn extend_fn_reference<'a, 'b>(
-	r#ref: &'a (dyn Fn(&dyn Any) + 'a),
-) -> &'b (dyn Fn(&dyn Any) + 'b) {
-	transmute(r#ref)
-}
-
-unsafe fn extend_reference<'a, 'b, T: ?Sized>(r#ref: &'a T) -> &'b T {
-	transmute(r#ref)
+pub struct Error(ErrorKind);
+enum ErrorKind {
+	DepthLimitReached,
+	NotEnoughDomNodes(web_sys::NodeList),
+	ExpectedComment(web_sys::Node),
+	ExpectedElement(web_sys::Node),
+	ExpectedText(web_sys::Node),
 }
