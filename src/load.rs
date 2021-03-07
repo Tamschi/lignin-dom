@@ -64,7 +64,7 @@ pub fn load_node<'a, A: Allocator<'a>>(
 	node: &web_sys::Node,
 ) -> lignin::Node<'a, ThreadSafe> {
 	if let Some(element) = node.dyn_ref::<web_sys::Element>() {
-		lignin::Node::Element {
+		lignin::Node::HtmlElement {
 			element: allocator.allocate(load_element(allocator, element)),
 			dom_binding: None,
 		}

@@ -31,7 +31,19 @@ maintenance = { status = "experimental" }
 lignin = { git = "https://github.com/Tamschi/lignin.git", branch = "rework-2021-02", features = ["callbacks"] } # public
 log = "0.4.8"
 wasm-bindgen = "0.2.68" # public-ish
-web-sys = { version = "0.3.33", features = ["Attr", "CharacterData", "Comment", "Document", "Element", "EventTarget", "NamedNodeMap", "Node", "NodeList", "Text"] }
+web-sys = { version = "0.3.33", features = [
+	"Attr",
+	"CharacterData",
+	"Comment",
+	"Document",
+	"HtmlElement",
+	"EventTarget",
+	"NamedNodeMap",
+	"Node",
+	"NodeList",
+	"SvgElement",
+	"Text",
+] }
 
 [dev-dependencies]
 cargo-husky = "1.5.0"
