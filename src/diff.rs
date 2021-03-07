@@ -132,7 +132,7 @@ fn diff_splice_node_list(
 		}
 		*i += 1;
 	}
-	
+
 	for removed_node in vdom_a {
 		todo!()
 	}
