@@ -2,19 +2,28 @@ use core::slice;
 
 use lignin::{CallbackRef, DomRef, ThreadBound};
 use log::{trace, warn};
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, JsValue};
 
 pub fn update_child_nodes(
+	document: &web_sys::Document,
 	vdom_a: &[lignin::Node<'_, ThreadBound>],
 	vdom_b: &[lignin::Node<'_, ThreadBound>],
 	dom: &web_sys::Node,
 	depth_limit: usize,
 ) -> Result<(), Error> {
-	diff_splice_node_list(vdom_a, vdom_b, &dom.child_nodes(), &mut 0, depth_limit)
+	diff_splice_node_list(
+		document,
+		vdom_a,
+		vdom_b,
+		&dom.child_nodes(),
+		&mut 0,
+		depth_limit,
+	)
 }
 
 //TODO: This is currently pretty panic-happy on unexpected DOM structure.
 fn diff_splice_node_list(
+	document: &web_sys::Document,
 	vdom_a: &[lignin::Node<'_, ThreadBound>],
 	vdom_b: &[lignin::Node<'_, ThreadBound>],
 	dom_slice: &web_sys::NodeList,
@@ -42,10 +51,12 @@ fn diff_splice_node_list(
 				let node = dom_slice
 					.get(*i)
 					.ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let comment = node
-					.dyn_ref::<web_sys::Comment>()
-					.ok_or_else(|| Error(ErrorKind::ExpectedComment(node.clone())))?;
-				let guard = unlock(db_1, db_2, &mut || comment.clone().into());
+				let comment = node.dyn_ref::<web_sys::Comment>().ok_or_else(|| {
+					Error(ErrorKind::ExpectedComment {
+						found: node.clone(),
+					})
+				})?;
+				let guard = loosen_binding(db_1, db_2, &mut || comment.clone().into());
 				if c_1 != c_2 {
 					comment.set_data(c_2)
 				}
@@ -64,12 +75,14 @@ fn diff_splice_node_list(
 				let node = dom_slice
 					.get(*i)
 					.ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let element = node
-					.dyn_ref::<web_sys::HtmlElement>()
-					.ok_or_else(|| Error(ErrorKind::ExpectedElement(node.clone())))?;
-				let guard = unlock(db_1, db_2, &mut || element.clone().into());
+				let element = node.dyn_ref::<web_sys::HtmlElement>().ok_or_else(|| {
+					Error(ErrorKind::ExpectedHtmlElement {
+						found: node.clone(),
+					})
+				})?;
+				let guard = loosen_binding(db_1, db_2, &mut || element.clone().into());
 
-				todo!("`HtmlElement` diff")
+				update_html_element(document, e_1, e_2, element)?
 			}
 
 			(
@@ -85,10 +98,12 @@ fn diff_splice_node_list(
 				let node = dom_slice
 					.get(*i)
 					.ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let element = node
-					.dyn_ref::<web_sys::SvgElement>()
-					.ok_or_else(|| Error(ErrorKind::ExpectedElement(node.clone())))?;
-				let guard = unlock(db_1, db_2, &mut || element.clone().into());
+				let element = node.dyn_ref::<web_sys::SvgElement>().ok_or_else(|| {
+					Error(ErrorKind::ExpectedSvgElement {
+						found: node.clone(),
+					})
+				})?;
+				let guard = loosen_binding(db_1, db_2, &mut || element.clone().into());
 
 				todo!("`SvgElement` diff")
 			}
@@ -105,6 +120,7 @@ fn diff_splice_node_list(
 			) => {
 				if sk_1 != sk_2 {
 					diff_splice_node_list(
+						document,
 						slice::from_ref(c_1),
 						slice::from_ref(c_2),
 						dom_slice,
@@ -115,7 +131,7 @@ fn diff_splice_node_list(
 			}
 
 			(lignin::Node::Multi(n_1), lignin::Node::Multi(n_2)) => {
-				diff_splice_node_list(n_1, n_2, dom_slice, i, depth_limit - 1)?
+				diff_splice_node_list(document, n_1, n_2, dom_slice, i, depth_limit - 1)?
 			}
 
 			(lignin::Node::Keyed(_), lignin::Node::Keyed(_)) => {
@@ -135,10 +151,12 @@ fn diff_splice_node_list(
 				let node = dom_slice
 					.get(*i)
 					.ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let text = node
-					.dyn_ref::<web_sys::Text>()
-					.ok_or_else(|| Error(ErrorKind::ExpectedText(node.clone())))?;
-				let guard = unlock(db_1, db_2, &mut || text.clone().into());
+				let text = node.dyn_ref::<web_sys::Text>().ok_or_else(|| {
+					Error(ErrorKind::ExpectedText {
+						found: node.clone(),
+					})
+				})?;
+				let guard = loosen_binding(db_1, db_2, &mut || text.clone().into());
 				if t_1 != t_2 {
 					text.set_data(t_2)
 				}
@@ -172,8 +190,22 @@ fn diff_splice_node_list(
 					}
 				}
 
-				diff_splice_node_list(slice::from_ref(n_1), &[], dom_slice, i, depth_limit)?;
-				diff_splice_node_list(&[], slice::from_ref(n_2), dom_slice, i, depth_limit)?;
+				diff_splice_node_list(
+					document,
+					slice::from_ref(n_1),
+					&[],
+					dom_slice,
+					i,
+					depth_limit,
+				)?;
+				diff_splice_node_list(
+					document,
+					&[],
+					slice::from_ref(n_2),
+					dom_slice,
+					i,
+					depth_limit,
+				)?;
 			}
 		}
 		*i += 1;
@@ -188,9 +220,11 @@ fn diff_splice_node_list(
 				let node = dom_slice
 					.get(*i)
 					.ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let comment = node
-					.dyn_ref::<web_sys::Comment>()
-					.ok_or_else(|| Error(ErrorKind::ExpectedComment(node.clone())))?;
+				let comment = node.dyn_ref::<web_sys::Comment>().ok_or_else(|| {
+					Error(ErrorKind::ExpectedComment {
+						found: node.clone(),
+					})
+				})?;
 
 				if let Some(dom_binding) = dom_binding {
 					dom_binding.call(DomRef::Removing(comment.clone().into()))
@@ -206,15 +240,18 @@ fn diff_splice_node_list(
 				let node = dom_slice
 					.get(*i)
 					.ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let html_element = node
-					.dyn_ref::<web_sys::HtmlElement>()
-					.ok_or_else(|| Error(ErrorKind::ExpectedElement(node.clone())))?;
+				let html_element = node.dyn_ref::<web_sys::HtmlElement>().ok_or_else(|| {
+					Error(ErrorKind::ExpectedHtmlElement {
+						found: node.clone(),
+					})
+				})?;
 
 				if let Some(dom_binding) = dom_binding {
 					dom_binding.call(DomRef::Removing(html_element.clone().into()))
 				}
 
 				diff_splice_node_list(
+					document,
 					slice::from_ref(&element.content),
 					&[],
 					&html_element.child_nodes(),
@@ -232,15 +269,18 @@ fn diff_splice_node_list(
 				let node = dom_slice
 					.get(*i)
 					.ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let svg_element = node
-					.dyn_ref::<web_sys::SvgElement>()
-					.ok_or_else(|| Error(ErrorKind::ExpectedElement(node.clone())))?;
+				let svg_element = node.dyn_ref::<web_sys::SvgElement>().ok_or_else(|| {
+					Error(ErrorKind::ExpectedSvgElement {
+						found: node.clone(),
+					})
+				})?;
 
 				if let Some(dom_binding) = dom_binding {
 					dom_binding.call(DomRef::Removing(svg_element.clone().into()))
 				}
 
 				diff_splice_node_list(
+					document,
 					slice::from_ref(&element.content),
 					&[],
 					&svg_element.child_nodes(),
@@ -251,17 +291,23 @@ fn diff_splice_node_list(
 				svg_element.remove()
 			}
 
-			lignin::Node::Memoized { state_key, content } => {
-				diff_splice_node_list(slice::from_ref(content), &[], dom_slice, i, depth_limit - 1)?
-			}
+			lignin::Node::Memoized { state_key, content } => diff_splice_node_list(
+				document,
+				slice::from_ref(content),
+				&[],
+				dom_slice,
+				i,
+				depth_limit - 1,
+			)?,
 
 			lignin::Node::Multi(nodes) => {
-				diff_splice_node_list(nodes, &[], dom_slice, i, depth_limit - 1)?
+				diff_splice_node_list(document, nodes, &[], dom_slice, i, depth_limit - 1)?
 			}
 
 			lignin::Node::Keyed(pairs) => {
 				for pair in pairs {
 					diff_splice_node_list(
+						document,
 						slice::from_ref(&pair.content),
 						&[],
 						dom_slice,
@@ -275,9 +321,11 @@ fn diff_splice_node_list(
 				let node = dom_slice
 					.get(*i)
 					.ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let text = node
-					.dyn_ref::<web_sys::Text>()
-					.ok_or_else(|| Error(ErrorKind::ExpectedComment(node.clone())))?;
+				let text = node.dyn_ref::<web_sys::Text>().ok_or_else(|| {
+					Error(ErrorKind::ExpectedComment {
+						found: node.clone(),
+					})
+				})?;
 
 				if let Some(dom_binding) = dom_binding {
 					dom_binding.call(DomRef::Removing(text.clone().into()))
@@ -303,7 +351,7 @@ fn diff_splice_node_list(
 
 //FIXME: It would generally be better to pass JS objects by reference here.
 #[must_use]
-fn unlock<'a, T>(
+fn loosen_binding<'a, T>(
 	previous: Option<CallbackRef<ThreadBound, DomRef<T>>>,
 	next: Option<CallbackRef<ThreadBound, DomRef<T>>>,
 	get_parameter: &'a mut dyn FnMut() -> T,
@@ -338,11 +386,112 @@ fn unlock<'a, T>(
 	}
 }
 
+fn update_html_element(
+	document: &web_sys::Document,
+	&lignin::Element {
+		name: _n_1,
+		attributes: mut a_1,
+		content: ref c_1,
+		event_bindings: mut eb_1,
+	}: &lignin::Element<ThreadBound>,
+	&lignin::Element {
+		name: _n_2,
+		attributes: mut a_2,
+		content: ref c_2,
+		event_bindings: mut eb_2,
+	}: &lignin::Element<ThreadBound>,
+	element: &web_sys::HtmlElement,
+) -> Result<(), Error> {
+	debug_assert_eq!(_n_1, _n_2);
+
+	let attributes = element.attributes();
+	while !a_1.is_empty() && !a_2.is_empty() {
+		todo!()
+	}
+
+	for &lignin::Attribute { name, value } in a_1 {
+		let attribute = attributes.remove_named_item(name).map_err(|error| {
+			Error(ErrorKind::CouldNotRemoveAttribute {
+				element: element.clone(),
+				name: name.to_owned(),
+				error,
+			})
+		})?;
+		if attribute.value() != value {
+			return Err(Error(ErrorKind::UnexpectedRemovedAttributeValue {
+				element: element.clone(),
+				expected: value.to_owned(),
+				found: attribute,
+			}));
+		}
+	}
+
+	for &lignin::Attribute { name, value } in a_2 {
+		let attribute = document.create_attribute(name).map_err(move |error| {
+			Error(ErrorKind::CouldNotCreateAttribute {
+				name: name.to_owned(),
+				error,
+			})
+		})?;
+		if value != "" {
+			attribute.set_value(value)
+		}
+		if let Some(replaced) = attributes
+			.set_named_item(&attribute)
+			.map_err(move |error| {
+				Error(ErrorKind::CouldNotAddAttribute {
+					element: element.clone(),
+					attribute,
+					error,
+				})
+			})? {
+			return Err(Error(ErrorKind::AttributeCollision {
+				element: element.clone(),
+				replaced,
+			}));
+		}
+	}
+
+	todo!()
+}
+
 pub struct Error(ErrorKind);
 enum ErrorKind {
 	DepthLimitReached,
 	NotEnoughDomNodes(web_sys::NodeList),
-	ExpectedComment(web_sys::Node),
-	ExpectedElement(web_sys::Node),
-	ExpectedText(web_sys::Node),
+	ExpectedComment {
+		found: web_sys::Node,
+	},
+	ExpectedHtmlElement {
+		found: web_sys::Node,
+	},
+	ExpectedSvgElement {
+		found: web_sys::Node,
+	},
+	ExpectedText {
+		found: web_sys::Node,
+	},
+	CouldNotRemoveAttribute {
+		element: web_sys::HtmlElement,
+		name: String,
+		error: JsValue,
+	},
+	UnexpectedRemovedAttributeValue {
+		element: web_sys::HtmlElement,
+		expected: String,
+		found: web_sys::Attr,
+	},
+	CouldNotCreateAttribute {
+		name: String,
+		error: JsValue,
+	},
+	CouldNotAddAttribute {
+		element: web_sys::HtmlElement,
+		attribute: web_sys::Attr,
+		error: JsValue,
+	},
+	AttributeCollision {
+		element: web_sys::HtmlElement,
+		replaced: web_sys::Attr,
+	},
 }
