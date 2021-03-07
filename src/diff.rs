@@ -1,6 +1,6 @@
 use core::slice;
 
-use lignin::{CallbackRef, DomRef, ThreadBound};
+use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, ThreadBound};
 use log::{trace, warn};
 use wasm_bindgen::{JsCast, JsValue};
 
@@ -22,6 +22,7 @@ pub fn update_child_nodes(
 }
 
 //TODO: This is currently pretty panic-happy on unexpected DOM structure.
+#[allow(clippy::too_many_lines)]
 fn diff_splice_node_list(
 	document: &web_sys::Document,
 	vdom_a: &[lignin::Node<'_, ThreadBound>],
@@ -56,7 +57,7 @@ fn diff_splice_node_list(
 						found: node.clone(),
 					})
 				})?;
-				let guard = loosen_binding(db_1, db_2, &mut || comment.clone().into());
+				let _guard = loosen_binding(db_1, db_2, comment.into());
 				if c_1 != c_2 {
 					comment.set_data(c_2)
 				}
@@ -80,7 +81,7 @@ fn diff_splice_node_list(
 						found: node.clone(),
 					})
 				})?;
-				let guard = loosen_binding(db_1, db_2, &mut || element.clone().into());
+				let _guard = loosen_binding(db_1, db_2, element.into());
 
 				update_html_element(document, e_1, e_2, element)?
 			}
@@ -103,7 +104,7 @@ fn diff_splice_node_list(
 						found: node.clone(),
 					})
 				})?;
-				let guard = loosen_binding(db_1, db_2, &mut || element.clone().into());
+				let _guard = loosen_binding(db_1, db_2, element.into());
 
 				todo!("`SvgElement` diff")
 			}
@@ -156,7 +157,7 @@ fn diff_splice_node_list(
 						found: node.clone(),
 					})
 				})?;
-				let guard = loosen_binding(db_1, db_2, &mut || text.clone().into());
+				let _guard = loosen_binding(db_1, db_2, text.into());
 				if t_1 != t_2 {
 					text.set_data(t_2)
 				}
@@ -227,7 +228,7 @@ fn diff_splice_node_list(
 				})?;
 
 				if let Some(dom_binding) = dom_binding {
-					dom_binding.call(DomRef::Removing(comment.clone().into()))
+					dom_binding.call(DomRef::Removing(comment.into()))
 				}
 
 				comment.remove()
@@ -247,7 +248,7 @@ fn diff_splice_node_list(
 				})?;
 
 				if let Some(dom_binding) = dom_binding {
-					dom_binding.call(DomRef::Removing(html_element.clone().into()))
+					dom_binding.call(DomRef::Removing(html_element.into()))
 				}
 
 				diff_splice_node_list(
@@ -276,7 +277,7 @@ fn diff_splice_node_list(
 				})?;
 
 				if let Some(dom_binding) = dom_binding {
-					dom_binding.call(DomRef::Removing(svg_element.clone().into()))
+					dom_binding.call(DomRef::Removing(svg_element.into()))
 				}
 
 				diff_splice_node_list(
@@ -328,7 +329,7 @@ fn diff_splice_node_list(
 				})?;
 
 				if let Some(dom_binding) = dom_binding {
-					dom_binding.call(DomRef::Removing(text.clone().into()))
+					dom_binding.call(DomRef::Removing(text.into()))
 				}
 
 				text.remove()
@@ -340,8 +341,7 @@ fn diff_splice_node_list(
 		}
 	}
 
-	let document = dom.owner_document().expect("TODO: No owner document.");
-	let next_child = dom.child_nodes().item(*i); // None if i == dom.child_nodes().length().
+	// let next_child = dom.child_nodes().item(*i); // None if i == dom.child_nodes().length().
 	for new_node in vdom_b {
 		todo!()
 	}
@@ -349,38 +349,41 @@ fn diff_splice_node_list(
 	Ok(())
 }
 
-//FIXME: It would generally be better to pass JS objects by reference here.
+#[allow(clippy::type_complexity)]
 #[must_use]
-fn loosen_binding<'a, T>(
-	previous: Option<CallbackRef<ThreadBound, DomRef<T>>>,
-	next: Option<CallbackRef<ThreadBound, DomRef<T>>>,
-	get_parameter: &'a mut dyn FnMut() -> T,
-) -> impl 'a + Drop {
+fn loosen_binding<T>(
+	previous: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>,
+	next: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>,
+	parameter: &T,
+) -> impl '_ + Drop {
 	#![allow(clippy::items_after_statements)]
 
 	return if previous == next {
 		BindingTransition {
 			next: None,
-			get_parameter,
+			parameter,
 		}
 	} else {
 		if let Some(previous) = previous {
-			previous.call(DomRef::Removing(get_parameter()));
+			previous.call(DomRef::Removing(parameter));
 		}
-		BindingTransition {
-			next,
-			get_parameter,
-		}
+		BindingTransition { next, parameter }
 	};
 
-	struct BindingTransition<'a, T> {
-		next: Option<CallbackRef<ThreadBound, DomRef<T>>>,
-		get_parameter: &'a mut dyn FnMut() -> T,
+	struct BindingTransition<'a, T>
+	where
+		fn(DomRef<&'_ T>): CallbackSignature,
+	{
+		next: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>,
+		parameter: &'a T,
 	}
-	impl<'a, T> Drop for BindingTransition<'a, T> {
+	impl<'a, T> Drop for BindingTransition<'a, T>
+	where
+		fn(DomRef<&'_ T>): CallbackSignature,
+	{
 		fn drop(&mut self) {
 			if let Some(next) = self.next {
-				next.call(DomRef::Added((self.get_parameter)()));
+				next.call(DomRef::Added(self.parameter));
 			}
 		}
 	}
