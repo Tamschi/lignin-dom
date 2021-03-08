@@ -9,7 +9,7 @@ TODO: Date
 * **Breaking:**
   * Upgraded `lignin` dependency from 0.0.3 to 0.0.5
     > to support fallible allocation/bump object initialisation downstream.
-  * Increased minimum supported Rust version from 1.42.0 to 1.44.0
+  * Increased minimum supported Rust version from 1.42.0 to 1.46.0
     > required because of `lignin` upgrade.
 
 ## 0.0.3
