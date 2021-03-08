@@ -27,6 +27,9 @@ is-it-maintained-issue-resolution = { repository = "Tamschi/lignin-dom" }
 is-it-maintained-open-issues = { repository = "Tamschi/lignin-dom" }
 maintenance = { status = "experimental" }
 
+[features]
+log-paths = [] #TODO: Log VDOM paths in error messages, which is expensive.
+
 [dependencies]
 lignin = { git = "https://github.com/Tamschi/lignin.git", branch = "rework-2021-02", features = ["callbacks"] } # public
 log = "0.4.8"

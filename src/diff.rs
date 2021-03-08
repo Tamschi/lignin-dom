@@ -1,8 +1,12 @@
 use core::slice;
 
 use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, ThreadBound};
-use log::{trace, warn};
+use log::{
+	error, log_enabled, trace, warn,
+	Level::{Error, Warn},
+};
 use wasm_bindgen::{JsCast, JsValue};
+use web_sys::{HtmlElement, NamedNodeMap};
 
 pub fn update_child_nodes(
 	document: &web_sys::Document,
@@ -10,7 +14,7 @@ pub fn update_child_nodes(
 	vdom_b: &[lignin::Node<'_, ThreadBound>],
 	dom: &web_sys::Node,
 	depth_limit: usize,
-) -> Result<(), Error> {
+) {
 	diff_splice_node_list(
 		document,
 		vdom_a,
@@ -25,20 +29,18 @@ pub fn update_child_nodes(
 #[allow(clippy::too_many_lines)]
 fn diff_splice_node_list(
 	document: &web_sys::Document,
-	vdom_a: &[lignin::Node<'_, ThreadBound>],
-	vdom_b: &[lignin::Node<'_, ThreadBound>],
+	mut vdom_a: &[lignin::Node<'_, ThreadBound>],
+	mut vdom_b: &[lignin::Node<'_, ThreadBound>],
 	dom_slice: &web_sys::NodeList,
 	i: &mut u32,
 	depth_limit: usize,
-) -> Result<(), Error> {
+) {
 	if depth_limit == 0 {
-		return Err(Error(ErrorKind::DepthLimitReached));
+		return error!("Depth limit reached");
 	}
 
-	let mut vdom_a = vdom_a.iter().copied();
-	let mut vdom_b = vdom_b.iter().copied();
-	while !vdom_a.len() > 0 && !vdom_b.len() > 0 {
-		match (vdom_a.next().unwrap(), vdom_b.next().unwrap()) {
+	while !vdom_a.is_empty() && !vdom_b.is_empty() {
+		match (vdom_a[0], vdom_b[0]) {
 			(
 				lignin::Node::Comment {
 					comment: c_1,
@@ -49,15 +51,61 @@ fn diff_splice_node_list(
 					dom_binding: db_2,
 				},
 			) => {
-				let node = dom_slice
-					.get(*i)
-					.ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let comment = node.dyn_ref::<web_sys::Comment>().ok_or_else(|| {
-					Error(ErrorKind::ExpectedComment {
-						found: node.clone(),
-					})
-				})?;
+				let node = match dom_slice.get(*i) {
+					Some(node) => node,
+					None => {
+						error!("Expected comment beyond end of `web_sys::NodeList`. Switching to insertions.");
+						// TODO: Decrement event listener handles by vdom_a. Info about the total count.
+						diff_splice_node_list(document, &[], vdom_b, dom_slice, i, depth_limit);
+						return;
+					}
+				};
+				let comment = match node.dyn_ref::<web_sys::Comment>() {
+					Some(comment) => comment,
+					None => {
+						error!("Expected to update `web_sys::Comment` but found {:?}; Recreating instead.", node);
+						diff_splice_node_list(
+							document,
+							&[lignin::Node::Comment {
+								comment: c_1,
+								dom_binding: db_1,
+							}],
+							&[],
+							dom_slice,
+							i,
+							depth_limit,
+						);
+						diff_splice_node_list(
+							document,
+							&[],
+							&[lignin::Node::Comment {
+								comment: c_2,
+								dom_binding: db_2,
+							}],
+							dom_slice,
+							i,
+							depth_limit,
+						);
+						continue;
+					}
+				};
+
 				let _guard = loosen_binding(db_1, db_2, comment.into());
+				if log_enabled!(Error) && comment.data() != c_1 {
+					if c_1 == c_2 {
+						error!(
+							"Unexpected comment data that won't be updated: Expected {:?} but found {:?}",
+							c_1,
+							comment.data(),
+						);
+					} else {
+						warn!(
+							"Unexpected comment data: Expected {:?} but found {:?}",
+							c_1,
+							comment.data(),
+						);
+					}
+				}
 				if c_1 != c_2 {
 					comment.set_data(c_2)
 				}
@@ -209,7 +257,9 @@ fn diff_splice_node_list(
 				)?;
 			}
 		}
-		*i += 1;
+
+		vdom_a = &vdom_a[1..];
+		vdom_b = &vdom_b[1..];
 	}
 
 	for removed_node in vdom_a {
@@ -221,17 +271,23 @@ fn diff_splice_node_list(
 				let node = dom_slice
 					.get(*i)
 					.ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let comment = node.dyn_ref::<web_sys::Comment>().ok_or_else(|| {
+				let dom_comment = node.dyn_ref::<web_sys::Comment>().ok_or_else(|| {
 					Error(ErrorKind::ExpectedComment {
 						found: node.clone(),
 					})
 				})?;
 
 				if let Some(dom_binding) = dom_binding {
-					dom_binding.call(DomRef::Removing(comment.into()))
+					dom_binding.call(DomRef::Removing(dom_comment.into()))
 				}
 
-				comment.remove()
+				if cfg!(debug_assertions) && dom_comment.data() != comment {
+					return Err(Error(ErrorKind::UnexpectedCommentData {
+						comment: dom_comment.clone(),
+					}));
+				}
+
+				dom_comment.remove();
 			}
 
 			lignin::Node::HtmlElement {
@@ -292,7 +348,10 @@ fn diff_splice_node_list(
 				svg_element.remove()
 			}
 
-			lignin::Node::Memoized { state_key, content } => diff_splice_node_list(
+			lignin::Node::Memoized {
+				state_key: _,
+				content,
+			} => diff_splice_node_list(
 				document,
 				slice::from_ref(content),
 				&[],
@@ -322,17 +381,23 @@ fn diff_splice_node_list(
 				let node = dom_slice
 					.get(*i)
 					.ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let text = node.dyn_ref::<web_sys::Text>().ok_or_else(|| {
+				let dom_text = node.dyn_ref::<web_sys::Text>().ok_or_else(|| {
 					Error(ErrorKind::ExpectedComment {
 						found: node.clone(),
 					})
 				})?;
 
 				if let Some(dom_binding) = dom_binding {
-					dom_binding.call(DomRef::Removing(text.into()))
+					dom_binding.call(DomRef::Removing(dom_text.into()))
 				}
 
-				text.remove()
+				if cfg!(debug_assertions) && dom_text.data() != text {
+					return Err(Error(ErrorKind::UnexpectedTextData {
+						text: dom_text.clone(),
+					}));
+				}
+
+				dom_text.remove();
 			}
 
 			lignin::Node::RemnantSite(_) => {
@@ -343,7 +408,8 @@ fn diff_splice_node_list(
 
 	// let next_child = dom.child_nodes().item(*i); // None if i == dom.child_nodes().length().
 	for new_node in vdom_b {
-		todo!()
+		todo!();
+		*i += 1;
 	}
 
 	Ok(())
@@ -389,54 +455,61 @@ fn loosen_binding<T>(
 	}
 }
 
+#[allow(clippy::items_after_statements)]
 fn update_html_element(
 	document: &web_sys::Document,
 	&lignin::Element {
-		name: _n_1,
+		name: n_1,
 		attributes: mut a_1,
 		content: ref c_1,
 		event_bindings: mut eb_1,
 	}: &lignin::Element<ThreadBound>,
 	&lignin::Element {
-		name: _n_2,
+		name: n_2,
 		attributes: mut a_2,
 		content: ref c_2,
 		event_bindings: mut eb_2,
 	}: &lignin::Element<ThreadBound>,
 	element: &web_sys::HtmlElement,
 ) -> Result<(), Error> {
-	debug_assert_eq!(_n_1, _n_2);
+	debug_assert_eq!(n_1, n_2);
 
-	let attributes = element.attributes();
-	while !a_1.is_empty() && !a_2.is_empty() {
-		todo!()
-	}
-
-	for &lignin::Attribute { name, value } in a_1 {
-		let attribute = attributes.remove_named_item(name).map_err(|error| {
-			Error(ErrorKind::CouldNotRemoveAttribute {
-				element: element.clone(),
-				name: name.to_owned(),
-				error,
-			})
-		})?;
-		if attribute.value() != value {
-			return Err(Error(ErrorKind::UnexpectedRemovedAttributeValue {
-				element: element.clone(),
-				expected: value.to_owned(),
-				found: attribute,
-			}));
+	fn remove_attribute(
+		element: &web_sys::HtmlElement,
+		attributes: &web_sys::NamedNodeMap,
+		&lignin::Attribute { name, value }: &lignin::Attribute,
+	) {
+		match attributes.remove_named_item(name) {
+			Err(error) => warn!(
+				"Could not remove attribute with name {:?}, value {:?}: {:?}",
+				name, value, error
+			),
+			Ok(removed) => {
+				if log_enabled!(Warn) && removed.value() != value {
+					warn!(
+						"Unexpected value of removed attribute {:?}: Expected {:?} but found {:?}",
+						name,
+						value,
+						removed.value()
+					);
+				}
+			}
 		}
 	}
 
-	for &lignin::Attribute { name, value } in a_2 {
+	fn add_attribute(
+		document: &web_sys::Document,
+		element: &web_sys::HtmlElement,
+		attributes: &web_sys::NamedNodeMap,
+		&lignin::Attribute { name, value }: &lignin::Attribute,
+	) -> Result<(), Error> {
 		let attribute = document.create_attribute(name).map_err(move |error| {
 			Error(ErrorKind::CouldNotCreateAttribute {
 				name: name.to_owned(),
 				error,
 			})
 		})?;
-		if value != "" {
+		if !value.is_empty() {
 			attribute.set_value(value)
 		}
 		if let Some(replaced) = attributes
@@ -453,48 +526,21 @@ fn update_html_element(
 				replaced,
 			}));
 		}
+		Ok(())
+	}
+
+	let attributes = element.attributes();
+	while !a_1.is_empty() && !a_2.is_empty() {
+		todo!()
+	}
+
+	for removed in a_1 {
+		remove_attribute(element, &attributes, removed)
+	}
+
+	for added in a_2 {
+		add_attribute(document, element, &attributes, added)?
 	}
 
 	todo!()
-}
-
-pub struct Error(ErrorKind);
-enum ErrorKind {
-	DepthLimitReached,
-	NotEnoughDomNodes(web_sys::NodeList),
-	ExpectedComment {
-		found: web_sys::Node,
-	},
-	ExpectedHtmlElement {
-		found: web_sys::Node,
-	},
-	ExpectedSvgElement {
-		found: web_sys::Node,
-	},
-	ExpectedText {
-		found: web_sys::Node,
-	},
-	CouldNotRemoveAttribute {
-		element: web_sys::HtmlElement,
-		name: String,
-		error: JsValue,
-	},
-	UnexpectedRemovedAttributeValue {
-		element: web_sys::HtmlElement,
-		expected: String,
-		found: web_sys::Attr,
-	},
-	CouldNotCreateAttribute {
-		name: String,
-		error: JsValue,
-	},
-	CouldNotAddAttribute {
-		element: web_sys::HtmlElement,
-		attribute: web_sys::Attr,
-		error: JsValue,
-	},
-	AttributeCollision {
-		element: web_sys::HtmlElement,
-		replaced: web_sys::Attr,
-	},
 }
