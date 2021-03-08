@@ -16,11 +16,7 @@ struct SliceGenerator<T, NextAt: FnMut(usize) -> T> {
 }
 impl<T, NextAt: FnMut(usize) -> T> SliceGenerator<T, NextAt> {
 	pub fn new(len: usize, next_at: NextAt) -> Self {
-		Self {
-			len,
-			counter: 0,
-			next_at,
-		}
+		Self { len, counter: 0, next_at }
 	}
 }
 impl<T, NextAt: FnMut(usize) -> T> Iterator for SliceGenerator<T, NextAt> {
@@ -45,10 +41,7 @@ impl<T, NextAt: FnMut(usize) -> T> ExactSizeIterator for SliceGenerator<T, NextA
 	}
 }
 
-pub fn load_child_nodes<'a, A: Allocator<'a>>(
-	allocator: &A,
-	child_nodes: &web_sys::NodeList,
-) -> lignin::Node<'a, ThreadSafe> {
+pub fn load_child_nodes<'a, A: Allocator<'a>>(allocator: &A, child_nodes: &web_sys::NodeList) -> lignin::Node<'a, ThreadSafe> {
 	match child_nodes.length() {
 		1 => load_node(allocator, &child_nodes.item(0).unwrap()),
 		len => lignin::Node::Multi(allocator.allocate_slice(&SliceGenerator::new(len as usize, |i| {
@@ -78,10 +71,7 @@ pub fn load_node<'a, A: Allocator<'a>>(allocator: &A, node: &web_sys::Node) -> l
 	}
 }
 
-pub fn load_element<'a, A: Allocator<'a>>(
-	allocator: &A,
-	element: &web_sys::Element,
-) -> lignin::Element<'a, ThreadSafe> {
+pub fn load_element<'a, A: Allocator<'a>>(allocator: &A, element: &web_sys::Element) -> lignin::Element<'a, ThreadSafe> {
 	let node: &web_sys::Node = element.as_ref();
 	lignin::Element {
 		name: allocator.allocate(element.tag_name()),
@@ -91,10 +81,7 @@ pub fn load_element<'a, A: Allocator<'a>>(
 	}
 }
 
-pub fn load_attributes<'a, A: Allocator<'a>>(
-	allocator: &A,
-	attributes: &web_sys::NamedNodeMap,
-) -> &'a [lignin::Attribute<'a>] {
+pub fn load_attributes<'a, A: Allocator<'a>>(allocator: &A, attributes: &web_sys::NamedNodeMap) -> &'a [lignin::Attribute<'a>] {
 	allocator.allocate_slice(&SliceGenerator::new(attributes.length() as usize, |i| {
 		load_attribute(allocator, &attributes.item(i.try_into().unwrap()).unwrap())
 	}))

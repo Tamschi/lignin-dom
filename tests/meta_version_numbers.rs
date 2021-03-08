@@ -12,20 +12,14 @@ fn changelog() {
 
 #[test]
 fn html_root_url() {
-	version_sync::assert_contains_regex!(
-		"src/lib.rs",
-		r#"^#!\[doc\(html_root_url = "https://docs\.rs/{name}/{version}"\)\]$"#
-	);
+	version_sync::assert_contains_regex!("src/lib.rs", r#"^#!\[doc\(html_root_url = "https://docs\.rs/{name}/{version}"\)\]$"#);
 }
 
 #[test]
 fn homepage() {
 	version_sync::assert_contains_regex!(
 		"Cargo.toml",
-		&format!(
-			r#"^homepage = "https://github\.com/{0}/{{name}}/tree/v{{version}}"$"#,
-			USER,
-		)
+		&format!(r#"^homepage = "https://github\.com/{0}/{{name}}/tree/v{{version}}"$"#, USER,)
 	);
 }
 

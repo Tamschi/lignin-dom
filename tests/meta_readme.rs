@@ -7,8 +7,5 @@ fn installation() {
 
 #[test]
 fn versioning() {
-	version_sync::assert_contains_regex!(
-		"README.md",
-		r"^`{name}` strictly follows \[Semantic Versioning 2\.0\.0\]"
-	);
+	version_sync::assert_contains_regex!("README.md", r"^`{name}` strictly follows \[Semantic Versioning 2\.0\.0\]");
 }

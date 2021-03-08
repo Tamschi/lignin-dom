@@ -81,10 +81,7 @@ fn license() {
 
 #[test]
 fn git_hub() {
-	version_sync::assert_contains_regex!(
-		"Cargo.toml",
-		&format!(r#"^repository = "https://github.com/{0}/{{name}}"$"#, USER,)
-	);
+	version_sync::assert_contains_regex!("Cargo.toml", &format!(r#"^repository = "https://github.com/{0}/{{name}}"$"#, USER,));
 
 	version_sync::assert_contains_regex!(
 		"README.md",

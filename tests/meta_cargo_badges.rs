@@ -8,10 +8,7 @@ use constants::*;
 fn is_it_maintained_issue_resolution() {
 	version_sync::assert_contains_regex!(
 		"Cargo.toml",
-		&format!(
-			r#"^is-it-maintained-issue-resolution = \{{ repository = "{0}/{{name}}" \}}$"#,
-			USER,
-		)
+		&format!(r#"^is-it-maintained-issue-resolution = \{{ repository = "{0}/{{name}}" \}}$"#, USER,)
 	);
 }
 
@@ -19,10 +16,7 @@ fn is_it_maintained_issue_resolution() {
 fn is_it_maintained_open_issues() {
 	version_sync::assert_contains_regex!(
 		"Cargo.toml",
-		&format!(
-			r#"^is-it-maintained-open-issues = \{{ repository = "{0}/{{name}}" \}}$"#,
-			USER,
-		)
+		&format!(r#"^is-it-maintained-open-issues = \{{ repository = "{0}/{{name}}" \}}$"#, USER,)
 	);
 }
 
