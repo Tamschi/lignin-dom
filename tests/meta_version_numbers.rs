@@ -31,8 +31,5 @@ fn homepage() {
 
 #[test]
 fn documentation() {
-	version_sync::assert_contains_regex!(
-		"Cargo.toml",
-		r#"^documentation = "https://docs\.rs/{name}/{version}"$"#
-	);
+	version_sync::assert_contains_regex!("Cargo.toml", r#"^documentation = "https://docs\.rs/{name}/{version}"$"#);
 }

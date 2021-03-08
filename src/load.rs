@@ -51,18 +51,13 @@ pub fn load_child_nodes<'a, A: Allocator<'a>>(
 ) -> lignin::Node<'a, ThreadSafe> {
 	match child_nodes.length() {
 		1 => load_node(allocator, &child_nodes.item(0).unwrap()),
-		len => lignin::Node::Multi(
-			allocator.allocate_slice(&SliceGenerator::new(len as usize, |i| {
-				load_node(allocator, &child_nodes.item(i.try_into().unwrap()).unwrap())
-			})),
-		),
+		len => lignin::Node::Multi(allocator.allocate_slice(&SliceGenerator::new(len as usize, |i| {
+			load_node(allocator, &child_nodes.item(i.try_into().unwrap()).unwrap())
+		}))),
 	}
 }
 
-pub fn load_node<'a, A: Allocator<'a>>(
-	allocator: &A,
-	node: &web_sys::Node,
-) -> lignin::Node<'a, ThreadSafe> {
+pub fn load_node<'a, A: Allocator<'a>>(allocator: &A, node: &web_sys::Node) -> lignin::Node<'a, ThreadSafe> {
 	if let Some(element) = node.dyn_ref::<web_sys::Element>() {
 		lignin::Node::HtmlElement {
 			element: allocator.allocate(load_element(allocator, element)),
@@ -105,10 +100,7 @@ pub fn load_attributes<'a, A: Allocator<'a>>(
 	}))
 }
 
-pub fn load_attribute<'a, A: Allocator<'a>>(
-	allocator: &A,
-	attribute: &web_sys::Attr,
-) -> lignin::Attribute<'a> {
+pub fn load_attribute<'a, A: Allocator<'a>>(allocator: &A, attribute: &web_sys::Attr) -> lignin::Attribute<'a> {
 	lignin::Attribute {
 		name: allocator.allocate(attribute.local_name()),
 		value: allocator.allocate(attribute.value()),
