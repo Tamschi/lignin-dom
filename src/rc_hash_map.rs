@@ -1,5 +1,7 @@
-use core::borrow::Borrow;
-use core::hash::{BuildHasher, Hash};
+use core::{
+	borrow::Borrow,
+	hash::{BuildHasher, Hash},
+};
 use hashbrown::{
 	hash_map::{DefaultHashBuilder, DrainFilter, Entry},
 	HashMap,
