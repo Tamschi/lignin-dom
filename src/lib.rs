@@ -6,5 +6,7 @@ pub mod readme {
 	doc_comment::doctest!("../README.md");
 }
 
+mod rc_hash_map;
+
 pub mod diff;
 pub mod load;
