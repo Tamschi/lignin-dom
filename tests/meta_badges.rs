@@ -42,10 +42,7 @@ fn crates() {
 
 #[test]
 fn docs() {
-	version_sync::assert_contains_regex!(
-		"README.md",
-		r"^\[!\[Docs\.rs\]\(https://docs\.rs/{name}/badge\.svg\)\]\(https://docs\.rs/crates/{name}\)$"
-	);
+	version_sync::assert_contains_regex!("README.md", r"^\[!\[Docs\.rs\]\(https://docs\.rs/{name}/badge\.svg\)\]\(https://docs\.rs/crates/{name}\)$");
 }
 
 #[test]
@@ -73,10 +70,7 @@ fn build_status() {
 
 #[test]
 fn license() {
-	version_sync::assert_contains_regex!(
-		"README.md",
-		r"^!\[Crates\.io - License\]\(https://img\.shields\.io/crates/l/{name}/{version}\)$"
-	);
+	version_sync::assert_contains_regex!("README.md", r"^!\[Crates\.io - License\]\(https://img\.shields\.io/crates/l/{name}/{version}\)$");
 }
 
 #[test]

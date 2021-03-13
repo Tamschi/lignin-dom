@@ -17,10 +17,7 @@ fn html_root_url() {
 
 #[test]
 fn homepage() {
-	version_sync::assert_contains_regex!(
-		"Cargo.toml",
-		&format!(r#"^homepage = "https://github\.com/{0}/{{name}}/tree/v{{version}}"$"#, USER,)
-	);
+	version_sync::assert_contains_regex!("Cargo.toml", &format!(r#"^homepage = "https://github\.com/{0}/{{name}}/tree/v{{version}}"$"#, USER,));
 }
 
 #[test]
