@@ -244,12 +244,17 @@ fn diff_splice_node_list(
 				let dom_comment = match node.dyn_ref::<web_sys::Comment>() {
 					Some(comment) => comment,
 					None => {
-						error!("Expected to remove `web_sys::Comment` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.", node);
+						error!(
+							"Expected to remove `web_sys::Comment` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.",
+							node
+						);
 
 						match node.parent_node() {
-							Some(parent) => if let Err(error) = parent.remove_child(&node) {
-								error!("Failed to remove the node: {:?}", error)
-							},
+							Some(parent) => {
+								if let Err(error) = parent.remove_child(&node) {
+									error!("Failed to remove the node: {:?}", error)
+								}
+							}
 							None => error!("Could not find parent node of node to remove. Ignoring."),
 						}
 						continue;
@@ -280,12 +285,17 @@ fn diff_splice_node_list(
 				let html_element = match node.dyn_ref::<web_sys::HtmlElement>() {
 					Some(html_element) => html_element,
 					None => {
-						error!("Expected to remove `web_sys::HtmlElement` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.", node);
+						error!(
+							"Expected to remove `web_sys::HtmlElement` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.",
+							node
+						);
 
 						match node.parent_node() {
-							Some(parent) => if let Err(error) = parent.remove_child(&node) {
-								error!("Failed to remove the node: {:?}", error)
-							},
+							Some(parent) => {
+								if let Err(error) = parent.remove_child(&node) {
+									error!("Failed to remove the node: {:?}", error)
+								}
+							}
 							None => error!("Could not find parent node of node to remove. Ignoring."),
 						}
 						continue;
@@ -293,7 +303,11 @@ fn diff_splice_node_list(
 				};
 
 				if html_element.tag_name() != element.name {
-					error!("Expected to remove <{}> but found <{}>; Removing anyway but ignoring bindings.", element.name, html_element.tag_name());
+					error!(
+						"Expected to remove <{}> but found <{}>; Removing anyway but ignoring bindings.",
+						element.name,
+						html_element.tag_name()
+					);
 					html_element.remove();
 					continue;
 				}
@@ -337,12 +351,17 @@ fn diff_splice_node_list(
 				let dom_text = match node.dyn_ref::<web_sys::Text>() {
 					Some(text) => text,
 					None => {
-						error!("Expected to remove `web_sys::Text` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.", node);
+						error!(
+							"Expected to remove `web_sys::Text` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.",
+							node
+						);
 
 						match node.parent_node() {
-							Some(parent) => if let Err(error) = parent.remove_child(&node) {
-								error!("Failed to remove the node: {:?}", error)
-							},
+							Some(parent) => {
+								if let Err(error) = parent.remove_child(&node) {
+									error!("Failed to remove the node: {:?}", error)
+								}
+							}
 							None => error!("Could not find parent node of node to remove. Ignoring."),
 						}
 						continue;
@@ -445,7 +464,13 @@ fn update_element(
 		}
 	}
 
-	fn add_attribute(document: &web_sys::Document, element: &web_sys::Element, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute, mode: ElementMode) {
+	fn add_attribute(
+		document: &web_sys::Document,
+		element: &web_sys::Element,
+		attributes: &web_sys::NamedNodeMap,
+		&lignin::Attribute { name, value }: &lignin::Attribute,
+		mode: ElementMode,
+	) {
 		let attribute = document
 			.create_attribute(name)
 			.map_err(move |error| Error(ErrorKind::CouldNotCreateAttribute { name: name.to_owned(), error }))?;
