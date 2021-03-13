@@ -93,7 +93,7 @@ fn diff_splice_node_list(
 
 					let _guard = loosen_binding(db_1, db_2, html_element.into());
 
-					update_element(document, e_1, e_2, html_element)
+					update_element(document, e_1, e_2, html_element, ElementMode::HtmlOrCustom)
 				}
 
 				(lignin::Node::MathMlElement { element: e_1, dom_binding: db_1 }, lignin::Node::MathMlElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name => {
@@ -124,7 +124,7 @@ fn diff_splice_node_list(
 
 					let _guard = loosen_binding(db_1, db_2, element.into());
 
-					update_element(document, e_1, e_2, element)
+					update_element(document, e_1, e_2, element, ElementMode::MathMl)
 				}
 
 				(lignin::Node::SvgElement { element: e_1, dom_binding: db_1 }, lignin::Node::SvgElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name => {
@@ -155,7 +155,7 @@ fn diff_splice_node_list(
 
 					let _guard = loosen_binding(db_1, db_2, svg_element.into());
 
-					update_element(document, e_1, e_2, svg_element)
+					update_element(document, e_1, e_2, svg_element, ElementMode::Svg)
 				}
 
 				(lignin::Node::Memoized { state_key: sk_1, content: c_1 }, lignin::Node::Memoized { state_key: sk_2, content: c_2 }) => {
@@ -220,8 +220,8 @@ fn diff_splice_node_list(
 						}
 					}
 
-					diff_splice_node_list(document, slice::from_ref(n_1), &[], dom_slice, i, depth_limit)?;
-					diff_splice_node_list(document, &[], slice::from_ref(n_2), dom_slice, i, depth_limit)?;
+					diff_splice_node_list(document, slice::from_ref(n_1), &[], dom_slice, i, depth_limit);
+					diff_splice_node_list(document, &[], slice::from_ref(n_2), dom_slice, i, depth_limit);
 				}
 			};
 		}
@@ -231,74 +231,130 @@ fn diff_splice_node_list(
 	}
 
 	for removed_node in vdom_a {
-		match removed_node {
+		match *removed_node {
 			lignin::Node::Comment { comment, dom_binding } => {
-				let node = dom_slice.get(*i).ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let dom_comment = node
-					.dyn_ref::<web_sys::Comment>()
-					.ok_or_else(|| Error(ErrorKind::ExpectedComment { found: node.clone() }))?;
+				let node = match dom_slice.get(*i) {
+					Some(node) => node,
+					None => {
+						error!("Expected to remove comment beyond end of `web_sys::NodeList`. Skipping further deletions here while ignoring bindings.");
+						break;
+					}
+				};
+
+				let dom_comment = match node.dyn_ref::<web_sys::Comment>() {
+					Some(comment) => comment,
+					None => {
+						error!("Expected to remove `web_sys::Comment` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.", node);
+
+						match node.parent_node() {
+							Some(parent) => if let Err(error) = parent.remove_child(&node) {
+								error!("Failed to remove the node: {:?}", error)
+							},
+							None => error!("Could not find parent node of node to remove. Ignoring."),
+						}
+						continue;
+					}
+				};
 
 				if let Some(dom_binding) = dom_binding {
 					dom_binding.call(DomRef::Removing(dom_comment.into()))
 				}
 
-				if cfg!(debug_assertions) && dom_comment.data() != comment {
-					return Err(Error(ErrorKind::UnexpectedCommentData { comment: dom_comment.clone() }));
+				if log_enabled!(Error) && dom_comment.data() != comment {
+					error!("Unexpected removed comment data: {:?}", dom_comment.data())
 				}
 
 				dom_comment.remove();
 			}
 
 			lignin::Node::HtmlElement { element, dom_binding } => {
-				let node = dom_slice.get(*i).ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let html_element = node
-					.dyn_ref::<web_sys::HtmlElement>()
-					.ok_or_else(|| Error(ErrorKind::ExpectedHtmlElement { found: node.clone() }))?;
+				let node = match dom_slice.get(*i) {
+					Some(node) => node,
+					None => {
+						error!("Expected to remove HTML element beyond end of `web_sys::NodeList`. Skipping further deletions here while ignoring bindings.");
+						//TODO: Decrement bindings.
+						break;
+					}
+				};
+
+				let html_element = match node.dyn_ref::<web_sys::HtmlElement>() {
+					Some(html_element) => html_element,
+					None => {
+						error!("Expected to remove `web_sys::HtmlElement` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.", node);
+
+						match node.parent_node() {
+							Some(parent) => if let Err(error) = parent.remove_child(&node) {
+								error!("Failed to remove the node: {:?}", error)
+							},
+							None => error!("Could not find parent node of node to remove. Ignoring."),
+						}
+						continue;
+					}
+				};
+
+				if html_element.tag_name() != element.name {
+					error!("Expected to remove <{}> but found <{}>; Removing anyway but ignoring bindings.", element.name, html_element.tag_name());
+					html_element.remove();
+					continue;
+				}
 
 				if let Some(dom_binding) = dom_binding {
 					dom_binding.call(DomRef::Removing(html_element.into()))
 				}
 
-				diff_splice_node_list(document, slice::from_ref(&element.content), &[], &html_element.child_nodes(), &mut 0, depth_limit - 1)?;
+				unbind_node(document, &element.content, &html_element.child_nodes(), &mut 0, depth_limit - 1);
 
 				html_element.remove()
 			}
 
-			lignin::Node::SvgElement { element, dom_binding } => {
-				let node = dom_slice.get(*i).ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let svg_element = node
-					.dyn_ref::<web_sys::SvgElement>()
-					.ok_or_else(|| Error(ErrorKind::ExpectedSvgElement { found: node.clone() }))?;
-
-				if let Some(dom_binding) = dom_binding {
-					dom_binding.call(DomRef::Removing(svg_element.into()))
-				}
-
-				diff_splice_node_list(document, slice::from_ref(&element.content), &[], &svg_element.child_nodes(), &mut 0, depth_limit - 1)?;
-
-				svg_element.remove()
+			lignin::Node::MathMlElement { element, dom_binding } => {
+				todo!("Remove MathML element")
 			}
 
-			lignin::Node::Memoized { state_key: _, content } => diff_splice_node_list(document, slice::from_ref(content), &[], dom_slice, i, depth_limit - 1)?,
+			lignin::Node::SvgElement { element, dom_binding } => {
+				todo!("Remove SVG element")
+			}
 
-			lignin::Node::Multi(nodes) => diff_splice_node_list(document, nodes, &[], dom_slice, i, depth_limit - 1)?,
+			lignin::Node::Memoized { state_key: _, content } => diff_splice_node_list(document, slice::from_ref(content), &[], dom_slice, i, depth_limit - 1),
+
+			lignin::Node::Multi(nodes) => diff_splice_node_list(document, nodes, &[], dom_slice, i, depth_limit - 1),
 
 			lignin::Node::Keyed(pairs) => {
 				for pair in pairs {
-					diff_splice_node_list(document, slice::from_ref(&pair.content), &[], dom_slice, i, depth_limit - 1)?
+					diff_splice_node_list(document, slice::from_ref(&pair.content), &[], dom_slice, i, depth_limit - 1)
 				}
 			}
 
 			lignin::Node::Text { text, dom_binding } => {
-				let node = dom_slice.get(*i).ok_or_else(|| Error(ErrorKind::NotEnoughDomNodes(dom_slice.clone())))?;
-				let dom_text = node.dyn_ref::<web_sys::Text>().ok_or_else(|| Error(ErrorKind::ExpectedComment { found: node.clone() }))?;
+				let node = match dom_slice.get(*i) {
+					Some(node) => node,
+					None => {
+						error!("Expected to remove text beyond end of `web_sys::NodeList`. Skipping further deletions here while ignoring bindings.");
+						break;
+					}
+				};
+
+				let dom_text = match node.dyn_ref::<web_sys::Text>() {
+					Some(text) => text,
+					None => {
+						error!("Expected to remove `web_sys::Text` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.", node);
+
+						match node.parent_node() {
+							Some(parent) => if let Err(error) = parent.remove_child(&node) {
+								error!("Failed to remove the node: {:?}", error)
+							},
+							None => error!("Could not find parent node of node to remove. Ignoring."),
+						}
+						continue;
+					}
+				};
 
 				if let Some(dom_binding) = dom_binding {
 					dom_binding.call(DomRef::Removing(dom_text.into()))
 				}
 
-				if cfg!(debug_assertions) && dom_text.data() != text {
-					return Err(Error(ErrorKind::UnexpectedTextData { text: dom_text.clone() }));
+				if log_enabled!(Error) && dom_text.data() != text {
+					error!("Unexpected removed text data: {:?}", dom_text.data())
 				}
 
 				dom_text.remove();
@@ -350,6 +406,14 @@ fn loosen_binding<T>(previous: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)
 	}
 }
 
+/// Controls how certain attributes are namespaced.
+#[derive(Clone, Copy, PartialEq)]
+enum ElementMode {
+	HtmlOrCustom,
+	MathMl,
+	Svg,
+}
+
 #[allow(clippy::items_after_statements)]
 fn update_element(
 	document: &web_sys::Document,
@@ -366,10 +430,11 @@ fn update_element(
 		event_bindings: mut eb_2,
 	}: &lignin::Element<ThreadBound>,
 	element: &web_sys::Element,
+	mode: ElementMode,
 ) {
 	debug_assert_eq!(n_1, n_2);
 
-	fn remove_attribute(element: &web_sys::Element, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute) {
+	fn remove_attribute(element: &web_sys::Element, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute, mode: ElementMode) {
 		match attributes.remove_named_item(name) {
 			Err(error) => warn!("Could not remove attribute with name {:?}, value {:?}: {:?}", name, value, error),
 			Ok(removed) => {
@@ -380,7 +445,7 @@ fn update_element(
 		}
 	}
 
-	fn add_attribute(document: &web_sys::Document, element: &web_sys::HtmlElement, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute) {
+	fn add_attribute(document: &web_sys::Document, element: &web_sys::Element, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute, mode: ElementMode) {
 		let attribute = document
 			.create_attribute(name)
 			.map_err(move |error| Error(ErrorKind::CouldNotCreateAttribute { name: name.to_owned(), error }))?;
@@ -408,11 +473,11 @@ fn update_element(
 	}
 
 	for removed in a_1 {
-		remove_attribute(element, &attributes, removed)
+		remove_attribute(element, &attributes, removed, mode)
 	}
 
 	for added in a_2 {
-		add_attribute(document, element, &attributes, added)?
+		add_attribute(document, element, &attributes, added, mode)
 	}
 
 	todo!()
