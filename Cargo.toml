@@ -31,7 +31,7 @@ maintenance = { status = "experimental" }
 log-paths = [] #TODO: Log VDOM paths in error messages, which is expensive.
 
 [dependencies]
-hashbrown = "0.9.1"
+hashbrown = "0.11.0"
 lignin = { git = "https://github.com/Tamschi/lignin.git", branch = "rework-2021-02", features = ["callbacks"] } # public
 log = "0.4.8"
 num-traits = "0.2.14"
