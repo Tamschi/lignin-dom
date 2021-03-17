@@ -30,6 +30,7 @@ fn diff_splice_node_list(
 	}
 
 	while !vdom_a.is_empty() && !vdom_b.is_empty() {
+		#[allow(clippy::never_loop)]
 		'vdom_item: loop {
 			break 'vdom_item match (vdom_a[0], vdom_b[0]) {
 				(lignin::Node::Comment { comment: c_1, dom_binding: db_1 }, lignin::Node::Comment { comment: c_2, dom_binding: db_2 }) => {
@@ -425,6 +426,44 @@ fn loosen_binding<T>(previous: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)
 	}
 }
 
+fn unbind_node(document: &web_sys::Document, node: &lignin::Node<ThreadBound>, dom_slice: &web_sys::NodeList, i: &mut u32, depth_limit: usize) {
+	if depth_limit == 0 {
+		return error!("Depth limit reached");
+	}
+
+	match *node {
+		lignin::Node::Comment { comment, dom_binding } => {
+			todo!()
+		}
+		lignin::Node::HtmlElement { element, dom_binding } => {
+			todo!()
+		}
+		lignin::Node::MathMlElement { element, dom_binding } => {
+			todo!()
+		}
+		lignin::Node::SvgElement { element, dom_binding } => {
+			todo!()
+		}
+		lignin::Node::Memoized { state_key: _, content } => unbind_node(document, content, dom_slice, i, depth_limit - 1),
+		lignin::Node::Multi(nodes) => {
+			for node in nodes {
+				unbind_node(document, node, dom_slice, i, depth_limit - 1)
+			}
+		}
+		lignin::Node::Keyed(reorderable_fragments) => {
+			for lignin::ReorderableFragment { dom_key: _, content } in reorderable_fragments {
+				unbind_node(document, content, dom_slice, i, depth_limit - 1)
+			}
+		}
+		lignin::Node::Text { text, dom_binding } => {
+			todo!()
+		}
+		lignin::Node::RemnantSite(_) => {
+			todo!("Unbind `RemnantSite`")
+		}
+	}
+}
+
 /// Controls how certain attributes are namespaced.
 #[derive(Clone, Copy, PartialEq)]
 enum ElementMode {
@@ -471,25 +510,18 @@ fn update_element(
 		&lignin::Attribute { name, value }: &lignin::Attribute,
 		mode: ElementMode,
 	) {
-		let attribute = document
-			.create_attribute(name)
-			.map_err(move |error| Error(ErrorKind::CouldNotCreateAttribute { name: name.to_owned(), error }))?;
+		let attribute = match document.create_attribute(name) {
+			Ok(attribute) => attribute,
+			Err(error) => return error!("Could not create attribute {:?}: {:?}", name, error),
+		};
 		if !value.is_empty() {
 			attribute.set_value(value)
 		}
-		if let Some(replaced) = attributes.set_named_item(&attribute).map_err(move |error| {
-			Error(ErrorKind::CouldNotAddAttribute {
-				element: element.clone(),
-				attribute,
-				error,
-			})
-		})? {
-			return Err(Error(ErrorKind::AttributeCollision {
-				element: element.clone(),
-				replaced,
-			}));
+		match attributes.set_named_item(&attribute) {
+			Ok(None) => (),
+			Err(error) => error!("Could not add attribute {:?}={:?}: {:?}", name, value, error),
+			Ok(Some(replaced)) => error!("Attribute collision. Added attribute {:?}={:?} was {:?} before", name, value, replaced),
 		}
-		Ok(())
 	}
 
 	let attributes = element.attributes();
