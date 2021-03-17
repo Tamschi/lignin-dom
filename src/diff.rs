@@ -692,8 +692,8 @@ impl DomDiffer {
 					self.decrement_handlers(node, depth_limit - 1)
 				}
 			}
-			lignin::Node::Keyed(reorderable_fragements) => {
-				for lignin::ReorderableFragment { dom_key: _, content } in reorderable_fragements {
+			lignin::Node::Keyed(reorderable_fragments) => {
+				for lignin::ReorderableFragment { dom_key: _, content } in reorderable_fragments {
 					self.decrement_handlers(content, depth_limit - 1)
 				}
 			}
