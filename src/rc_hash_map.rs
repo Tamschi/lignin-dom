@@ -37,7 +37,7 @@ where
 		Self(HashMap::with_hasher(S::default()))
 	}
 
-	pub fn increment_or_insert_with<F: FnOnce() -> V>(&mut self, k: K, v: F) -> Result<&mut V, CountSaturatedError> {
+	pub fn increment_or_insert_with<F: FnOnce(&K) -> V>(&mut self, k: K, v: F) -> Result<&mut V, CountSaturatedError> {
 		match self.0.entry(k) {
 			Entry::Occupied(occupied) => {
 				let (c, v) = occupied.into_mut();
@@ -45,9 +45,22 @@ where
 				Ok(v)
 			}
 			Entry::Vacant(vacant) => {
-				let (_, v) = vacant.insert((C::one(), v()));
+				let v = v(vacant.key());
+				let (_, v) = vacant.insert((C::one(), v));
 				Ok(v)
 			}
+		}
+	}
+
+	pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
+	where
+		K: Borrow<Q>,
+		Q: Eq + Hash,
+	{
+		match self.0.get(k) {
+			None => None,
+			Some((c, _)) if c.is_zero() => None,
+			Some((_, v)) => Some(v),
 		}
 	}
 
@@ -70,6 +83,7 @@ where
 	}
 }
 
+#[allow(clippy::type_complexity)]
 pub struct DrainWeak<'a, K, C, V>(DrainFilter<'a, K, (C, V), fn(&K, &mut (C, V)) -> bool>);
 impl<'a, K, C, V> DrainWeak<'a, K, C, V>
 where
@@ -91,4 +105,5 @@ impl<'a, K, C, V> Iterator for DrainWeak<'a, K, C, V> {
 	}
 }
 
-struct CountSaturatedError;
+#[derive(Debug)]
+pub struct CountSaturatedError;
