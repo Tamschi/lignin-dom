@@ -26,18 +26,12 @@ fn weak_assert_branch() {
 
 #[test]
 fn lib() {
-	version_sync::assert_contains_regex!(
-		"README.md",
-		r"^\[!\[Lib\.rs\]\(https://img\.shields\.io/badge/Lib\.rs-\*-84f\)\]\(https://lib\.rs/crates/{name}\)$"
-	);
+	version_sync::assert_contains_regex!("README.md", r"^\[!\[Lib\.rs\]\(https://img\.shields\.io/badge/Lib\.rs-\*-84f\)\]\(https://lib\.rs/crates/{name}\)$");
 }
 
 #[test]
 fn crates() {
-	version_sync::assert_contains_regex!(
-		"README.md",
-		r"^\[!\[Crates\.io\]\(https://img\.shields\.io/crates/v/{name}\)\]\(https://crates\.io/crates/{name}\)$"
-	);
+	version_sync::assert_contains_regex!("README.md", r"^\[!\[Crates\.io\]\(https://img\.shields\.io/crates/v/{name}\)\]\(https://crates\.io/crates/{name}\)$");
 }
 
 #[test]
@@ -49,10 +43,7 @@ fn docs() {
 fn rust_version() {
 	version_sync::assert_contains_regex!(
 		"README.md",
-		&format!(
-			r"^!\[Rust {0}\]\(https://img\.shields\.io/static/v1\?logo=Rust&label=&message={0}&color=grey\)$",
-			RUST_VERSION,
-		)
+		&format!(r"^!\[Rust {0}\]\(https://img\.shields\.io/static/v1\?logo=Rust&label=&message={0}&color=grey\)$", RUST_VERSION,)
 	);
 }
 
