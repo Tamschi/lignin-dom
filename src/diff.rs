@@ -1,12 +1,12 @@
 use crate::rc_hash_map::{self, RcHashMap};
-use core::slice;
+use core::{any::type_name, slice};
 use js_sys::Function;
 use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, Materialize, ThreadBound};
 use log::{
 	debug, error, info, log_enabled, trace, warn,
 	Level::{Error, Warn},
 };
-use std::{cell::UnsafeCell, marker::PhantomPinned, mem::MaybeUninit, pin::Pin};
+use std::{cell::UnsafeCell, convert::TryInto, marker::PhantomPinned, mem::MaybeUninit, pin::Pin};
 use wasm_bindgen::{closure::Closure, throw_str, JsCast, JsValue, UnwrapThrowExt};
 
 #[allow(clippy::type_complexity)]
@@ -43,32 +43,41 @@ impl DomDiffer {
 	fn create_listener(&mut self, callback_ref: CallbackRef<ThreadBound, fn(lignin::web::Event)>) -> &Function {
 		let common_handler = &self.common_handler;
 		self.handler_handles
-			.increment_or_insert_with(callback_ref, |callback_ref| {
-				common_handler.as_ref().unchecked_ref::<Function>().bind1(&JsValue::UNDEFINED, &callback_ref.into_js())
-			})
+			.increment_or_insert_with(callback_ref, |callback_ref| common_handler.as_ref().unchecked_ref::<Function>().bind1(&JsValue::UNDEFINED, &callback_ref.into_js()))
 			.expect_throw("Too many (more than 65k) active references to the same `CallbackRef`")
 	}
 
-	pub fn update_child_nodes(
-		&mut self,
-		document: &web_sys::Document,
-		vdom_a: &[lignin::Node<'_, ThreadBound>],
-		vdom_b: &[lignin::Node<'_, ThreadBound>],
-		dom: &web_sys::Node,
-		depth_limit: usize,
-	) {
-		self.diff_splice_node_list(document, vdom_a, vdom_b, &dom.child_nodes(), &mut 0, depth_limit);
+	pub fn update_child_nodes(&mut self, document: &web_sys::Document, vdom_a: &[lignin::Node<'_, ThreadBound>], vdom_b: &[lignin::Node<'_, ThreadBound>], dom_element: &web_sys::Element, depth_limit: usize) {
+		let child_nodes = dom_element.child_nodes();
+		self.diff_splice_node_list(
+			document,
+			vdom_a,
+			vdom_b,
+			dom_element,
+			&child_nodes,
+			&mut 0,
+			child_nodes
+				.item(lignin::Node::Multi(vdom_a).dom_len().try_into().unwrap_or_else(|_| {
+					error!("Overflowed `vdom_a.dom_len()` as u32. Insertions will happen at the very end.");
+					u32::MAX
+				}))
+				.as_ref(),
+			depth_limit,
+		);
 		self.handler_handles.drain_weak();
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	#[allow(clippy::too_many_lines)]
 	fn diff_splice_node_list(
 		&mut self,
 		document: &web_sys::Document,
 		mut vdom_a: &[lignin::Node<'_, ThreadBound>],
 		mut vdom_b: &[lignin::Node<'_, ThreadBound>],
+		parent_element: &web_sys::Element,
 		dom_slice: &web_sys::NodeList,
 		i: &mut u32,
+		next_sibling: Option<&web_sys::Node>,
 		depth_limit: usize,
 	) {
 		if depth_limit == 0 {
@@ -85,7 +94,7 @@ impl DomDiffer {
 							None => {
 								error!("Expected comment beyond end of `web_sys::NodeList`. Switching to insertions.");
 								// TODO: Decrement event listener handles by vdom_a. Info about the total count.
-								return self.diff_splice_node_list(document, &[], vdom_b, dom_slice, i, depth_limit);
+								return self.diff_splice_node_list(document, &[], vdom_b, parent_element, dom_slice, i, next_sibling, depth_limit);
 							}
 						};
 
@@ -93,8 +102,8 @@ impl DomDiffer {
 							Some(comment) => comment,
 							None => {
 								error!("Expected to update `web_sys::Comment` but found {:?}; Recreating the node.", node);
-								self.diff_splice_node_list(document, &[lignin::Node::Comment { comment: c_1, dom_binding: db_1 }], &[], dom_slice, i, depth_limit);
-								self.diff_splice_node_list(document, &[], &[lignin::Node::Comment { comment: c_2, dom_binding: db_2 }], dom_slice, i, depth_limit);
+								self.diff_splice_node_list(document, &[lignin::Node::Comment { comment: c_1, dom_binding: db_1 }], &[], parent_element, dom_slice, i, next_sibling, depth_limit);
+								self.diff_splice_node_list(document, &[], &[lignin::Node::Comment { comment: c_2, dom_binding: db_2 }], parent_element, dom_slice, i, next_sibling, depth_limit);
 								break 'vdom_item;
 							}
 						};
@@ -118,7 +127,7 @@ impl DomDiffer {
 							None => {
 								error!("Expected <{}> beyond end of `web_sys::NodeList`. Switching to insertions.", e_1.name);
 								// TODO: Decrement event listener handles by vdom_a. Info about the total count.
-								return self.diff_splice_node_list(document, &[], vdom_b, dom_slice, i, depth_limit);
+								return self.diff_splice_node_list(document, &[], vdom_b, parent_element, dom_slice, i, next_sibling, depth_limit);
 							}
 						};
 
@@ -126,16 +135,52 @@ impl DomDiffer {
 							Some(element) => element,
 							None => {
 								error!("Expected to update `web_sys::HtmlElement` but found {:?}; Recreating the node.", node);
-								self.diff_splice_node_list(document, &[lignin::Node::HtmlElement { element: e_1, dom_binding: db_1 }], &[], dom_slice, i, depth_limit);
-								self.diff_splice_node_list(document, &[], &[lignin::Node::HtmlElement { element: e_2, dom_binding: db_2 }], dom_slice, i, depth_limit);
+								self.diff_splice_node_list(
+									document,
+									&[lignin::Node::HtmlElement { element: e_1, dom_binding: db_1 }],
+									&[],
+									parent_element,
+									dom_slice,
+									i,
+									next_sibling,
+									depth_limit,
+								);
+								self.diff_splice_node_list(
+									document,
+									&[],
+									&[lignin::Node::HtmlElement { element: e_2, dom_binding: db_2 }],
+									parent_element,
+									dom_slice,
+									i,
+									next_sibling,
+									depth_limit,
+								);
 								break 'vdom_item;
 							}
 						};
 
 						if html_element.tag_name() != e_1.name {
 							error!("Expected to update <{}> but found <{}>; Recreating the HTML element.", e_1.name, html_element.tag_name());
-							self.diff_splice_node_list(document, &[lignin::Node::HtmlElement { element: e_1, dom_binding: db_1 }], &[], dom_slice, i, depth_limit);
-							self.diff_splice_node_list(document, &[], &[lignin::Node::HtmlElement { element: e_2, dom_binding: db_2 }], dom_slice, i, depth_limit);
+							self.diff_splice_node_list(
+								document,
+								&[lignin::Node::HtmlElement { element: e_1, dom_binding: db_1 }],
+								&[],
+								parent_element,
+								dom_slice,
+								i,
+								next_sibling,
+								depth_limit,
+							);
+							self.diff_splice_node_list(
+								document,
+								&[],
+								&[lignin::Node::HtmlElement { element: e_2, dom_binding: db_2 }],
+								parent_element,
+								dom_slice,
+								i,
+								next_sibling,
+								depth_limit,
+							);
 						}
 
 						let _guard = self.loosen_binding(db_1, db_2, html_element.into());
@@ -149,7 +194,7 @@ impl DomDiffer {
 							None => {
 								error!("Expected <{}> beyond end of `web_sys::NodeList`. Switching to insertions.", e_1.name);
 								// TODO: Decrement event listener handles by vdom_a. Info about the total count.
-								return self.diff_splice_node_list(document, &[], vdom_b, dom_slice, i, depth_limit);
+								return self.diff_splice_node_list(document, &[], vdom_b, parent_element, dom_slice, i, next_sibling, depth_limit);
 							}
 						};
 
@@ -157,16 +202,52 @@ impl DomDiffer {
 							Some(element) => element,
 							None => {
 								error!("Expected to update `web_sys::Element` but found {:?}; Recreating the node.", node);
-								self.diff_splice_node_list(document, &[lignin::Node::MathMlElement { element: e_1, dom_binding: db_1 }], &[], dom_slice, i, depth_limit);
-								self.diff_splice_node_list(document, &[], &[lignin::Node::MathMlElement { element: e_2, dom_binding: db_2 }], dom_slice, i, depth_limit);
+								self.diff_splice_node_list(
+									document,
+									&[lignin::Node::MathMlElement { element: e_1, dom_binding: db_1 }],
+									&[],
+									parent_element,
+									dom_slice,
+									i,
+									next_sibling,
+									depth_limit,
+								);
+								self.diff_splice_node_list(
+									document,
+									&[],
+									&[lignin::Node::MathMlElement { element: e_2, dom_binding: db_2 }],
+									parent_element,
+									dom_slice,
+									i,
+									next_sibling,
+									depth_limit,
+								);
 								break 'vdom_item;
 							}
 						};
 
 						if element.tag_name() != e_1.name {
 							error!("Expected to update <{}> but found <{}>; Recreating the MathML element.", e_1.name, element.tag_name());
-							self.diff_splice_node_list(document, &[lignin::Node::MathMlElement { element: e_1, dom_binding: db_1 }], &[], dom_slice, i, depth_limit);
-							self.diff_splice_node_list(document, &[], &[lignin::Node::MathMlElement { element: e_2, dom_binding: db_2 }], dom_slice, i, depth_limit);
+							self.diff_splice_node_list(
+								document,
+								&[lignin::Node::MathMlElement { element: e_1, dom_binding: db_1 }],
+								&[],
+								parent_element,
+								dom_slice,
+								i,
+								next_sibling,
+								depth_limit,
+							);
+							self.diff_splice_node_list(
+								document,
+								&[],
+								&[lignin::Node::MathMlElement { element: e_2, dom_binding: db_2 }],
+								parent_element,
+								dom_slice,
+								i,
+								next_sibling,
+								depth_limit,
+							);
 						}
 
 						let _guard = self.loosen_binding(db_1, db_2, element.into());
@@ -180,7 +261,7 @@ impl DomDiffer {
 							None => {
 								error!("Expected <{}> beyond end of `web_sys::NodeList`. Switching to insertions.", e_1.name);
 								// TODO: Decrement event listener handles by vdom_a. Info about the total count.
-								return self.diff_splice_node_list(document, &[], vdom_b, dom_slice, i, depth_limit);
+								return self.diff_splice_node_list(document, &[], vdom_b, parent_element, dom_slice, i, next_sibling, depth_limit);
 							}
 						};
 
@@ -188,16 +269,52 @@ impl DomDiffer {
 							Some(element) => element,
 							None => {
 								error!("Expected to update `web_sys::SvgElement` but found {:?}; Recreating the node.", node);
-								self.diff_splice_node_list(document, &[lignin::Node::SvgElement { element: e_1, dom_binding: db_1 }], &[], dom_slice, i, depth_limit);
-								self.diff_splice_node_list(document, &[], &[lignin::Node::SvgElement { element: e_2, dom_binding: db_2 }], dom_slice, i, depth_limit);
+								self.diff_splice_node_list(
+									document,
+									&[lignin::Node::SvgElement { element: e_1, dom_binding: db_1 }],
+									&[],
+									parent_element,
+									dom_slice,
+									i,
+									next_sibling,
+									depth_limit,
+								);
+								self.diff_splice_node_list(
+									document,
+									&[],
+									&[lignin::Node::SvgElement { element: e_2, dom_binding: db_2 }],
+									parent_element,
+									dom_slice,
+									i,
+									next_sibling,
+									depth_limit,
+								);
 								break 'vdom_item;
 							}
 						};
 
 						if svg_element.tag_name() != e_1.name {
 							error!("Expected to update <{}> but found <{}>; Recreating the SVG element.", e_1.name, svg_element.tag_name());
-							self.diff_splice_node_list(document, &[lignin::Node::SvgElement { element: e_1, dom_binding: db_1 }], &[], dom_slice, i, depth_limit);
-							self.diff_splice_node_list(document, &[], &[lignin::Node::SvgElement { element: e_2, dom_binding: db_2 }], dom_slice, i, depth_limit);
+							self.diff_splice_node_list(
+								document,
+								&[lignin::Node::SvgElement { element: e_1, dom_binding: db_1 }],
+								&[],
+								parent_element,
+								dom_slice,
+								i,
+								next_sibling,
+								depth_limit,
+							);
+							self.diff_splice_node_list(
+								document,
+								&[],
+								&[lignin::Node::SvgElement { element: e_2, dom_binding: db_2 }],
+								parent_element,
+								dom_slice,
+								i,
+								next_sibling,
+								depth_limit,
+							);
 						}
 
 						let _guard = self.loosen_binding(db_1, db_2, svg_element.into());
@@ -207,11 +324,11 @@ impl DomDiffer {
 
 					(lignin::Node::Memoized { state_key: sk_1, content: c_1 }, lignin::Node::Memoized { state_key: sk_2, content: c_2 }) => {
 						if sk_1 != sk_2 {
-							self.diff_splice_node_list(document, slice::from_ref(c_1), slice::from_ref(c_2), dom_slice, i, depth_limit - 1)
+							self.diff_splice_node_list(document, slice::from_ref(c_1), slice::from_ref(c_2), parent_element, dom_slice, i, next_sibling, depth_limit - 1)
 						}
 					}
 
-					(lignin::Node::Multi(n_1), lignin::Node::Multi(n_2)) => self.diff_splice_node_list(document, n_1, n_2, dom_slice, i, depth_limit - 1),
+					(lignin::Node::Multi(n_1), lignin::Node::Multi(n_2)) => self.diff_splice_node_list(document, n_1, n_2, parent_element, dom_slice, i, next_sibling, depth_limit - 1),
 
 					(lignin::Node::Keyed(_), lignin::Node::Keyed(_)) => {
 						todo!()
@@ -223,7 +340,7 @@ impl DomDiffer {
 							None => {
 								error!("Expected comment beyond end of `web_sys::NodeList`. Switching to insertions.");
 								// TODO: Decrement event listener handles by vdom_a. Info about the total count.
-								return self.diff_splice_node_list(document, &[], vdom_b, dom_slice, i, depth_limit);
+								return self.diff_splice_node_list(document, &[], vdom_b, parent_element, dom_slice, i, next_sibling, depth_limit);
 							}
 						};
 
@@ -231,8 +348,8 @@ impl DomDiffer {
 							Some(comment) => comment,
 							None => {
 								error!("Expected to update `web_sys::Text` but found {:?}; Recreating the node.", node);
-								self.diff_splice_node_list(document, &[lignin::Node::Text { text: t_1, dom_binding: db_1 }], &[], dom_slice, i, depth_limit);
-								self.diff_splice_node_list(document, &[], &[lignin::Node::Text { text: t_2, dom_binding: db_2 }], dom_slice, i, depth_limit);
+								self.diff_splice_node_list(document, &[lignin::Node::Text { text: t_1, dom_binding: db_1 }], &[], parent_element, dom_slice, i, next_sibling, depth_limit);
+								self.diff_splice_node_list(document, &[], &[lignin::Node::Text { text: t_2, dom_binding: db_2 }], parent_element, dom_slice, i, next_sibling, depth_limit);
 								break 'vdom_item;
 							}
 						};
@@ -267,8 +384,8 @@ impl DomDiffer {
 							}
 						}
 
-						self.diff_splice_node_list(document, slice::from_ref(n_1), &[], dom_slice, i, depth_limit);
-						self.diff_splice_node_list(document, &[], slice::from_ref(n_2), dom_slice, i, depth_limit);
+						self.diff_splice_node_list(document, slice::from_ref(n_1), &[], parent_element, dom_slice, i, next_sibling, depth_limit);
+						self.diff_splice_node_list(document, &[], slice::from_ref(n_2), parent_element, dom_slice, i, next_sibling, depth_limit);
 					}
 				};
 			}
@@ -277,7 +394,64 @@ impl DomDiffer {
 			vdom_b = &vdom_b[1..];
 		}
 
-		for removed_node in vdom_a {
+		let mut vdom_a = vdom_a.iter();
+		for removed_node in vdom_a.by_ref() {
+			self.decrement_handlers(removed_node, depth_limit);
+
+			macro_rules! remove_element {
+				($element:expr, $dom_binding:expr, $debug_kind:literal, $web_type:ty) => {{
+					let node = match dom_slice.get(*i) {
+						Some(node) => node,
+						None => {
+							error!(
+								"Expected to remove {} element beyond end of `web_sys::NodeList`. Skipping further deletions here while ignoring bindings.",
+								$debug_kind
+							);
+							for removed_node in vdom_a {
+								trace!("Decrementing handlers for further skipped node.");
+								self.decrement_handlers(removed_node, depth_limit)
+							}
+							break;
+						}
+					};
+
+					let dom_element = match node.dyn_ref::<$web_type>() {
+						Some(dom_element) => dom_element,
+						None => {
+							error!(
+								"Expected to remove `{}` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.",
+								type_name::<$web_type>(),
+								node
+							);
+
+							match node.parent_node() {
+								Some(parent) => {
+									if let Err(error) = parent.remove_child(&node) {
+										error!("Failed to remove the node: {:?}", error)
+									}
+								}
+								None => error!("Could not find parent node of node to remove. Ignoring."),
+							}
+							continue;
+						}
+					};
+
+					if dom_element.tag_name() != $element.name {
+						error!("Expected to remove <{}> but found <{}>; Removing anyway but ignoring bindings.", $element.name, dom_element.tag_name());
+						dom_element.remove();
+						continue;
+					}
+
+					if let Some(dom_binding) = $dom_binding {
+						dom_binding.call(DomRef::Removing(dom_element.into()))
+					}
+
+					self.unbind_node(document, &$element.content, &dom_element.child_nodes(), &mut 0, depth_limit - 1);
+
+					dom_element.remove()
+				};};
+			}
+
 			match *removed_node {
 				lignin::Node::Comment { comment, dom_binding } => {
 					let node = match dom_slice.get(*i) {
@@ -291,10 +465,7 @@ impl DomDiffer {
 					let dom_comment = match node.dyn_ref::<web_sys::Comment>() {
 						Some(comment) => comment,
 						None => {
-							error!(
-								"Expected to remove `web_sys::Comment` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.",
-								node
-							);
+							error!("Expected to remove `web_sys::Comment` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.", node);
 
 							match node.parent_node() {
 								Some(parent) => {
@@ -320,69 +491,24 @@ impl DomDiffer {
 				}
 
 				lignin::Node::HtmlElement { element, dom_binding } => {
-					let node = match dom_slice.get(*i) {
-						Some(node) => node,
-						None => {
-							error!("Expected to remove HTML element beyond end of `web_sys::NodeList`. Skipping further deletions here while ignoring bindings.");
-							//TODO: Decrement bindings.
-							break;
-						}
-					};
-
-					let html_element = match node.dyn_ref::<web_sys::HtmlElement>() {
-						Some(html_element) => html_element,
-						None => {
-							error!(
-								"Expected to remove `web_sys::HtmlElement` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.",
-								node
-							);
-
-							match node.parent_node() {
-								Some(parent) => {
-									if let Err(error) = parent.remove_child(&node) {
-										error!("Failed to remove the node: {:?}", error)
-									}
-								}
-								None => error!("Could not find parent node of node to remove. Ignoring."),
-							}
-							continue;
-						}
-					};
-
-					if html_element.tag_name() != element.name {
-						error!(
-							"Expected to remove <{}> but found <{}>; Removing anyway but ignoring bindings.",
-							element.name,
-							html_element.tag_name()
-						);
-						html_element.remove();
-						continue;
-					}
-
-					if let Some(dom_binding) = dom_binding {
-						dom_binding.call(DomRef::Removing(html_element.into()))
-					}
-
-					self.unbind_node(document, &element.content, &html_element.child_nodes(), &mut 0, depth_limit - 1);
-
-					html_element.remove()
+					remove_element!(element, dom_binding, "HTML", web_sys::HtmlElement)
 				}
 
 				lignin::Node::MathMlElement { element, dom_binding } => {
-					todo!("Remove MathML element")
+					remove_element!(element, dom_binding, "MathML", web_sys::Element)
 				}
 
 				lignin::Node::SvgElement { element, dom_binding } => {
-					todo!("Remove SVG element")
+					remove_element!(element, dom_binding, "SVG", web_sys::SvgElement)
 				}
 
-				lignin::Node::Memoized { state_key: _, content } => self.diff_splice_node_list(document, slice::from_ref(content), &[], dom_slice, i, depth_limit - 1),
+				lignin::Node::Memoized { state_key: _, content } => self.diff_splice_node_list(document, slice::from_ref(content), &[], parent_element, dom_slice, i, next_sibling, depth_limit - 1),
 
-				lignin::Node::Multi(nodes) => self.diff_splice_node_list(document, nodes, &[], dom_slice, i, depth_limit - 1),
+				lignin::Node::Multi(nodes) => self.diff_splice_node_list(document, nodes, &[], parent_element, dom_slice, i, next_sibling, depth_limit - 1),
 
 				lignin::Node::Keyed(pairs) => {
 					for pair in pairs {
-						self.diff_splice_node_list(document, slice::from_ref(&pair.content), &[], dom_slice, i, depth_limit - 1)
+						self.diff_splice_node_list(document, slice::from_ref(&pair.content), &[], parent_element, dom_slice, i, next_sibling, depth_limit - 1)
 					}
 				}
 
@@ -398,10 +524,7 @@ impl DomDiffer {
 					let dom_text = match node.dyn_ref::<web_sys::Text>() {
 						Some(text) => text,
 						None => {
-							error!(
-								"Expected to remove `web_sys::Text` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.",
-								node
-							);
+							error!("Expected to remove `web_sys::Text` but found {:?}; (Inefficiently) deleting the node anyway but ignoring bindings.", node);
 
 							match node.parent_node() {
 								Some(parent) => {
@@ -432,21 +555,50 @@ impl DomDiffer {
 			}
 		}
 
-		// let next_child = dom.child_nodes().item(*i); // None if i == dom.child_nodes().length().
 		for new_node in vdom_b {
-			todo!();
+			match *new_node {
+				lignin::Node::Comment { comment, dom_binding } => {
+					let dom_comment = document.create_comment(comment);
+					if let Err(error) = parent_element.insert_before(dom_comment.as_ref(), next_sibling) {
+						error!("Failed to insert comment: {:?}", error);
+						continue;
+					}
+					if let Some(dom_binding) = dom_binding {
+						dom_binding.call(DomRef::Added(&dom_comment.into()))
+					}
+				}
+				lignin::Node::HtmlElement { element, dom_binding } => {
+					todo!()
+				}
+				lignin::Node::MathMlElement { element, dom_binding } => {
+					todo!()
+				}
+				lignin::Node::SvgElement { element, dom_binding } => {
+					todo!()
+				}
+				lignin::Node::Memoized { state_key, content } => {
+					todo!()
+				}
+				lignin::Node::Multi(_) => {
+					todo!()
+				}
+				lignin::Node::Keyed(_) => {
+					todo!()
+				}
+				lignin::Node::Text { text, dom_binding } => {
+					todo!()
+				}
+				lignin::Node::RemnantSite(_) => {
+					todo!("Create `RemnantSite`")
+				}
+			}
 			*i += 1;
 		}
 	}
 
 	#[allow(clippy::type_complexity)]
 	#[must_use]
-	fn loosen_binding<'a, T>(
-		&mut self,
-		previous: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>,
-		next: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>,
-		parameter: &'a T,
-	) -> impl 'a + Drop {
+	fn loosen_binding<'a, T>(&mut self, previous: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>, next: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>, parameter: &'a T) -> impl 'a + Drop {
 		#![allow(clippy::items_after_statements)]
 
 		return if previous == next {
@@ -522,9 +674,7 @@ impl DomDiffer {
 
 		match *node {
 			lignin::Node::Comment { .. } | lignin::Node::Text { .. } => (),
-			lignin::Node::HtmlElement { element, dom_binding: _ }
-			| lignin::Node::MathMlElement { element, dom_binding: _ }
-			| lignin::Node::SvgElement { element, dom_binding: _ } => {
+			lignin::Node::HtmlElement { element, dom_binding: _ } | lignin::Node::MathMlElement { element, dom_binding: _ } | lignin::Node::SvgElement { element, dom_binding: _ } => {
 				for lignin::EventBinding { callback, .. } in element.event_bindings {
 					match self.handler_handles.weak_decrement(callback) {
 						Ok(Some(_)) => (),
@@ -582,13 +732,7 @@ impl DomDiffer {
 			}
 		}
 
-		fn add_attribute(
-			document: &web_sys::Document,
-			element: &web_sys::Element,
-			attributes: &web_sys::NamedNodeMap,
-			&lignin::Attribute { name, value }: &lignin::Attribute,
-			mode: ElementMode,
-		) {
+		fn add_attribute(document: &web_sys::Document, element: &web_sys::Element, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute, mode: ElementMode) {
 			let attribute = match document.create_attribute(name) {
 				Ok(attribute) => attribute,
 				Err(error) => return error!("Could not create attribute {:?}: {:?}", name, error),
