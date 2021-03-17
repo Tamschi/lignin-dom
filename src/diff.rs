@@ -13,16 +13,12 @@ use wasm_bindgen::{closure::Closure, throw_str, JsCast, JsValue, UnwrapThrowExt}
 pub struct DomDiffer {
 	handler_handles: RcHashMap<CallbackRef<ThreadBound, fn(lignin::web::Event)>, u16, Function>,
 	common_handler: Closure<dyn Fn(JsValue, web_sys::Event)>,
-	node_list: web_sys::NodeList,
+	element: web_sys::Element,
 	_pin: PhantomPinned,
 }
 impl DomDiffer {
 	#[must_use]
-	pub fn new_for_element_child_nodes(element: &web_sys::Element) -> Self {
-		Self::new_for_node_list(element.child_nodes().clone())
-	}
-	#[must_use]
-	pub fn new_for_node_list(node_list: web_sys::NodeList) -> Self {
+	pub fn new_for_element_child_nodes(element: web_sys::Element) -> Self {
 		Self {
 			handler_handles: RcHashMap::new(),
 			common_handler: Closure::wrap(Box::new(move |callback_ref: JsValue, event: web_sys::Event| {
@@ -35,7 +31,7 @@ impl DomDiffer {
 					})
 					.call(event.into());
 			})),
-			node_list,
+			element,
 			_pin: PhantomPinned,
 		}
 	}
@@ -47,13 +43,15 @@ impl DomDiffer {
 			.expect_throw("Too many (more than 65k) active references to the same `CallbackRef`")
 	}
 
-	pub fn update_child_nodes(&mut self, document: &web_sys::Document, vdom_a: &[lignin::Node<'_, ThreadBound>], vdom_b: &[lignin::Node<'_, ThreadBound>], dom_element: &web_sys::Element, depth_limit: usize) {
-		let child_nodes = dom_element.child_nodes();
+	pub fn update_child_nodes(&mut self, vdom_a: &[lignin::Node<'_, ThreadBound>], vdom_b: &[lignin::Node<'_, ThreadBound>], depth_limit: usize) {
+		let element = self.element.clone();
+		let child_nodes = self.element.child_nodes();
+		let owner_document = self.element.owner_document().expect_throw("lignin-dom: No owner document found for root element.");
 		self.diff_splice_node_list(
-			document,
+			&owner_document,
 			vdom_a,
 			vdom_b,
-			dom_element,
+			&element,
 			&child_nodes,
 			&mut 0,
 			child_nodes

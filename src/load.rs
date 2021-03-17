@@ -6,7 +6,7 @@ use wasm_bindgen::JsCast;
 
 pub trait Allocator<'a> {
 	fn allocate<T>(&self, instance: T) -> &'a T;
-	fn allocate_slice<T>(&self, iter: &dyn ExactSizeIterator<Item = T>) -> &'a [T];
+	fn allocate_slice<T>(&self, iter: &mut dyn ExactSizeIterator<Item = T>) -> &'a [T];
 }
 
 struct SliceGenerator<T, NextAt: FnMut(usize) -> T> {
@@ -44,7 +44,7 @@ impl<T, NextAt: FnMut(usize) -> T> ExactSizeIterator for SliceGenerator<T, NextA
 pub fn load_child_nodes<'a, A: Allocator<'a>>(allocator: &A, child_nodes: &web_sys::NodeList) -> lignin::Node<'a, ThreadSafe> {
 	match child_nodes.length() {
 		1 => load_node(allocator, &child_nodes.item(0).unwrap()),
-		len => lignin::Node::Multi(allocator.allocate_slice(&SliceGenerator::new(len as usize, |i| load_node(allocator, &child_nodes.item(i.try_into().unwrap()).unwrap())))),
+		len => lignin::Node::Multi(allocator.allocate_slice(&mut SliceGenerator::new(len as usize, |i| load_node(allocator, &child_nodes.item(i.try_into().unwrap()).unwrap())))),
 	}
 }
 
@@ -75,12 +75,14 @@ pub fn load_element<'a, A: Allocator<'a>>(allocator: &A, element: &web_sys::Elem
 		name: allocator.allocate(element.tag_name()),
 		attributes: load_attributes(allocator, &element.attributes()),
 		content: load_child_nodes(allocator, &node.child_nodes()),
-		event_bindings: allocator.allocate_slice(&iter::empty()),
+		event_bindings: allocator.allocate_slice(&mut iter::empty()),
 	}
 }
 
 pub fn load_attributes<'a, A: Allocator<'a>>(allocator: &A, attributes: &web_sys::NamedNodeMap) -> &'a [lignin::Attribute<'a>] {
-	allocator.allocate_slice(&SliceGenerator::new(attributes.length() as usize, |i| load_attribute(allocator, &attributes.item(i.try_into().unwrap()).unwrap())))
+	allocator.allocate_slice(&mut SliceGenerator::new(attributes.length() as usize, |i| {
+		load_attribute(allocator, &attributes.item(i.try_into().unwrap()).unwrap())
+	}))
 }
 
 pub fn load_attribute<'a, A: Allocator<'a>>(allocator: &A, attribute: &web_sys::Attr) -> lignin::Attribute<'a> {
