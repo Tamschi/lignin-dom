@@ -18,32 +18,17 @@ fn comment() {
 
 #[wasm_bindgen_test]
 fn text() {
-	test_create(|dom_binding| Node::Text {
-		text: "Hello lignin-dom!",
-		dom_binding,
-	});
+	test_create(|dom_binding| Node::Text { text: "Hello lignin-dom!", dom_binding });
 }
 
-fn test_create<T>(
-	vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>) -> Node<'static, ThreadBound>,
-) {
-	let body = window()
-		.unwrap()
-		.document()
-		.unwrap()
-		.body()
-		.unwrap()
-		.dyn_into::<HtmlBodyElement>()
-		.unwrap();
+fn test_create<T>(vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>) -> Node<'static, ThreadBound>) {
+	let body = window().unwrap().document().unwrap().body().unwrap().dyn_into::<HtmlBodyElement>().unwrap();
 
 	let mut differ = DomDiffer::new_for_element_child_nodes(body.into());
 
 	let got_ref = Box::pin(RefCell::new(0));
 
-	let callback =
-		CallbackRegistration::<_, fn(DomRef<&'_ T>)>::new(got_ref.as_ref(), |got_ref, _| {
-			*unsafe { got_ref.as_ref() }.unwrap().borrow_mut() += 1
-		});
+	let callback = CallbackRegistration::<_, fn(DomRef<&'_ T>)>::new(got_ref.as_ref(), |got_ref, _| *unsafe { got_ref.as_ref() }.unwrap().borrow_mut() += 1);
 
 	let dom_binding = Some(callback.to_ref_thread_bound());
 	differ.update_child_nodes(&[], &[vdom(dom_binding)], 1);
