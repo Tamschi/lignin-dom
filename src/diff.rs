@@ -46,7 +46,7 @@ impl DomDiffer {
 			.increment_or_insert_with(callback_ref, |callback_ref| {
 				common_handler.as_ref().unchecked_ref::<Function>().bind1(&JsValue::UNDEFINED, &callback_ref.into_js())
 			})
-			.expect_throw("Too many (more than 65k) active referenced to the same `CallbackRef`")
+			.expect_throw("Too many (more than 65k) active references to the same `CallbackRef`")
 	}
 
 	pub fn update_child_nodes(
