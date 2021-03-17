@@ -1,12 +1,12 @@
 use crate::rc_hash_map::{self, RcHashMap};
 use core::{any::type_name, slice};
 use js_sys::Function;
-use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, Materialize, ThreadBound};
+use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, ThreadBound};
 use log::{
 	debug, error, info, log_enabled, trace, warn,
 	Level::{Error, Warn},
 };
-use std::{cell::UnsafeCell, convert::TryInto, marker::PhantomPinned, mem::MaybeUninit, pin::Pin};
+use std::convert::TryInto;
 use wasm_bindgen::{closure::Closure, throw_str, JsCast, JsValue, UnwrapThrowExt};
 
 #[allow(clippy::type_complexity)]
@@ -14,7 +14,6 @@ pub struct DomDiffer {
 	handler_handles: RcHashMap<CallbackRef<ThreadBound, fn(lignin::web::Event)>, u16, Function>,
 	common_handler: Closure<dyn Fn(JsValue, web_sys::Event)>,
 	element: web_sys::Element,
-	_pin: PhantomPinned,
 }
 impl DomDiffer {
 	#[must_use]
@@ -32,7 +31,6 @@ impl DomDiffer {
 					.call(event.into());
 			})),
 			element,
-			_pin: PhantomPinned,
 		}
 	}
 
@@ -584,7 +582,14 @@ impl DomDiffer {
 					todo!()
 				}
 				lignin::Node::Text { text, dom_binding } => {
-					todo!()
+					let dom_text = document.create_text_node(text);
+					if let Err(error) = parent_element.insert_before(dom_text.as_ref(), next_sibling) {
+						error!("Failed to insert text: {:?}", error);
+						continue;
+					}
+					if let Some(dom_binding) = dom_binding {
+						dom_binding.call(DomRef::Added(&dom_text.into()))
+					}
 				}
 				lignin::Node::RemnantSite(_) => {
 					todo!("Create `RemnantSite`")
