@@ -1,4 +1,4 @@
-use lignin::{CallbackRef, CallbackRegistration, DomRef, Node, ThreadBound};
+use lignin::{CallbackRef, CallbackRegistration, DomRef, Node, ReorderableFragment, ThreadBound};
 use lignin_dom::{diff::DomDiffer, load::Allocator as _};
 use log::Level;
 use std::cell::RefCell;
@@ -48,6 +48,29 @@ fn multi() {
 }
 
 #[wasm_bindgen_test]
+fn keyed() {
+	test_create(
+		|dom_binding| {
+			Node::Keyed(Allocator.allocate([
+				ReorderableFragment {
+					dom_key: 0,
+					content: Node::Text { text: "Hello lignin-dom", dom_binding },
+				},
+				ReorderableFragment {
+					dom_key: 0, // Intentionally the same as above.
+					content: Node::Text { text: " keyed ", dom_binding },
+				},
+				ReorderableFragment {
+					dom_key: 1,
+					content: Node::Text { text: " nodes.", dom_binding },
+				},
+			]))
+		},
+		3,
+	);
+}
+
+#[wasm_bindgen_test]
 fn memoized() {
 	test_create(
 		|dom_binding| Node::Memoized {
@@ -58,13 +81,13 @@ fn memoized() {
 	);
 }
 
-static mut log_init: bool = false;
+static mut LOG_INITIALIZED: bool = false;
 
-fn test_create<T>(vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>) -> Node<'static, ThreadBound>, binding_count: usize) {
+fn test_create<T>(vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>) -> Node<'static, ThreadBound>, binding_count: isize) {
 	unsafe {
-		if log_init == false {
+		if !LOG_INITIALIZED {
 			console_log::init_with_level(Level::Trace).unwrap();
-			log_init = true;
+			LOG_INITIALIZED = true;
 		}
 	}
 
@@ -72,14 +95,23 @@ fn test_create<T>(vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRef<&'
 
 	let mut differ = DomDiffer::new_for_element_child_nodes(body.into());
 
-	let got_ref = Box::pin(RefCell::new(0));
+	let ref_count = Box::pin(RefCell::new(0));
 
-	let callback = CallbackRegistration::<_, fn(DomRef<&'_ T>)>::new(got_ref.as_ref(), |got_ref, _| *unsafe { got_ref.as_ref() }.unwrap().borrow_mut() += 1);
+	let callback = CallbackRegistration::<_, fn(DomRef<&'_ T>)>::new(ref_count.as_ref(), |got_ref, dom_ref| {
+		*unsafe { got_ref.as_ref() }.unwrap().borrow_mut() += match dom_ref {
+			DomRef::Added(_) => 1,
+			DomRef::Removing(_) => -1,
+		}
+	});
 
 	let dom_binding = Some(callback.to_ref_thread_bound());
-	differ.update_child_nodes(&[], &[vdom(dom_binding)], 1000);
+	let vdom = vdom(dom_binding);
+
+	differ.update_child_nodes(&[], &[vdom], 1000);
+	assert_eq!(*ref_count.borrow(), binding_count);
+
+	differ.update_child_nodes(&[vdom], &[], 1000);
+	assert_eq!(*ref_count.borrow(), 0);
 
 	drop(callback);
-
-	assert_eq!(*got_ref.borrow(), binding_count);
 }

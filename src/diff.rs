@@ -450,6 +450,7 @@ impl DomDiffer {
 
 			match *removed_node {
 				lignin::Node::Comment { comment, dom_binding } => {
+					trace!("Removing comment.");
 					let node = match dom_slice.get(*i) {
 						Some(node) => node,
 						None => {
@@ -487,28 +488,42 @@ impl DomDiffer {
 				}
 
 				lignin::Node::HtmlElement { element, dom_binding } => {
+					trace!("Removing HTML element:");
 					remove_element!(element, dom_binding, "HTML", web_sys::HtmlElement)
 				}
 
 				lignin::Node::MathMlElement { element, dom_binding } => {
+					trace!("Removing MathML element:");
 					remove_element!(element, dom_binding, "MathML", web_sys::Element)
 				}
 
 				lignin::Node::SvgElement { element, dom_binding } => {
+					trace!("Removing SVG element:");
 					remove_element!(element, dom_binding, "SVG", web_sys::SvgElement)
 				}
 
-				lignin::Node::Memoized { state_key: _, content } => self.diff_splice_node_list(document, slice::from_ref(content), &[], parent_element, dom_slice, i, next_sibling, depth_limit - 1),
+				lignin::Node::Memoized { state_key, content } => {
+					trace!("Removing memoized {:?}:", state_key);
+					self.diff_splice_node_list(document, slice::from_ref(content), &[], parent_element, dom_slice, i, next_sibling, depth_limit - 1)
+				}
 
-				lignin::Node::Multi(nodes) => self.diff_splice_node_list(document, nodes, &[], parent_element, dom_slice, i, next_sibling, depth_limit - 1),
+				lignin::Node::Multi(nodes) => {
+					trace!("Removing multi - start");
+					self.diff_splice_node_list(document, nodes, &[], parent_element, dom_slice, i, next_sibling, depth_limit - 1);
+					trace!("Removing multi - end");
+				}
 
-				lignin::Node::Keyed(pairs) => {
-					for pair in pairs {
-						self.diff_splice_node_list(document, slice::from_ref(&pair.content), &[], parent_element, dom_slice, i, next_sibling, depth_limit - 1)
+				lignin::Node::Keyed(reorderable_fragments) => {
+					trace!("Removing keyed - start");
+					for reorderable_fragment in reorderable_fragments {
+						trace!("Removing keyed - item {:?}:", reorderable_fragment.dom_key);
+						self.diff_splice_node_list(document, slice::from_ref(&reorderable_fragment.content), &[], parent_element, dom_slice, i, next_sibling, depth_limit - 1)
 					}
+					trace!("Removing keyed - end");
 				}
 
 				lignin::Node::Text { text, dom_binding } => {
+					trace!("Removing text node.");
 					let node = match dom_slice.get(*i) {
 						Some(node) => node,
 						None => {
@@ -574,7 +589,7 @@ impl DomDiffer {
 					todo!()
 				}
 				lignin::Node::Memoized { state_key, content } => {
-					trace!("Creating memoized {:?}", state_key);
+					trace!("Creating memoized {:?}:", state_key);
 					self.diff_splice_node_list(document, &[], slice::from_ref(content), parent_element, dom_slice, i, next_sibling, depth_limit - 1);
 				}
 				lignin::Node::Multi(nodes) => {
@@ -582,8 +597,13 @@ impl DomDiffer {
 					self.diff_splice_node_list(document, &[], nodes, parent_element, dom_slice, i, next_sibling, depth_limit - 1);
 					trace!("Creating multi - end");
 				}
-				lignin::Node::Keyed(_) => {
-					todo!()
+				lignin::Node::Keyed(reorderable_fragments) => {
+					trace!("Creating keyed - start");
+					for reorderable_fragment in reorderable_fragments {
+						trace!("Creating keyed - item {:?}:", reorderable_fragment.dom_key);
+						self.diff_splice_node_list(document, &[], slice::from_ref(&reorderable_fragment.content), parent_element, dom_slice, i, next_sibling, depth_limit - 1)
+					}
+					trace!("Creating keyed - end");
 				}
 				lignin::Node::Text { text, dom_binding } => {
 					trace!("Creating text node.");
