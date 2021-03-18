@@ -19,6 +19,7 @@ fn comment() {
 			dom_binding,
 		},
 		1,
+		1,
 	);
 }
 
@@ -29,6 +30,7 @@ fn text() {
 			text: "Hello lignin-dom text!",
 			dom_binding,
 		},
+		1,
 		1,
 	);
 }
@@ -43,6 +45,7 @@ fn multi() {
 				Node::Text { text: "nodes!", dom_binding },
 			]))
 		},
+		2,
 		3,
 	);
 }
@@ -66,6 +69,7 @@ fn keyed() {
 				},
 			]))
 		},
+		2,
 		3,
 	);
 }
@@ -77,13 +81,14 @@ fn memoized() {
 			state_key: 0,
 			content: Allocator.allocate(Node::Text { text: "Hello memoized!", dom_binding }),
 		},
+		2,
 		1,
 	);
 }
 
 static mut LOG_INITIALIZED: bool = false;
 
-fn test_create<T>(vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>) -> Node<'static, ThreadBound>, binding_count: isize) {
+fn test_create<T>(vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>) -> Node<'static, ThreadBound>, depth_limit: usize, binding_count: isize) {
 	unsafe {
 		if !LOG_INITIALIZED {
 			console_log::init_with_level(Level::Trace).unwrap();
@@ -107,10 +112,10 @@ fn test_create<T>(vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRef<&'
 	let dom_binding = Some(callback.to_ref_thread_bound());
 	let vdom = vdom(dom_binding);
 
-	differ.update_child_nodes(&[], &[vdom], 1000);
+	differ.update_child_nodes(&[], &[vdom], depth_limit);
 	assert_eq!(*ref_count.borrow(), binding_count);
 
-	differ.update_child_nodes(&[vdom], &[], 1000);
+	differ.update_child_nodes(&[vdom], &[], depth_limit);
 	assert_eq!(*ref_count.borrow(), 0);
 
 	drop(callback);
