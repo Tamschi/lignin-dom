@@ -554,6 +554,7 @@ impl DomDiffer {
 		for new_node in vdom_b {
 			match *new_node {
 				lignin::Node::Comment { comment, dom_binding } => {
+					trace!("Creating comment.");
 					let dom_comment = document.create_comment(comment);
 					if let Err(error) = parent_element.insert_before(dom_comment.as_ref(), next_sibling) {
 						error!("Failed to insert comment: {:?}", error);
@@ -573,15 +574,19 @@ impl DomDiffer {
 					todo!()
 				}
 				lignin::Node::Memoized { state_key, content } => {
-					todo!()
+					trace!("Creating memoized {:?}", state_key);
+					self.diff_splice_node_list(document, &[], slice::from_ref(content), parent_element, dom_slice, i, next_sibling, depth_limit - 1);
 				}
-				lignin::Node::Multi(_) => {
-					todo!()
+				lignin::Node::Multi(nodes) => {
+					trace!("Creating multi - start");
+					self.diff_splice_node_list(document, &[], nodes, parent_element, dom_slice, i, next_sibling, depth_limit - 1);
+					trace!("Creating multi - end");
 				}
 				lignin::Node::Keyed(_) => {
 					todo!()
 				}
 				lignin::Node::Text { text, dom_binding } => {
+					trace!("Creating text node.");
 					let dom_text = document.create_text_node(text);
 					if let Err(error) = parent_element.insert_before(dom_text.as_ref(), next_sibling) {
 						error!("Failed to insert text: {:?}", error);
