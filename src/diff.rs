@@ -130,7 +130,7 @@ impl DomDiffer {
 							}
 						};
 
-						let _guard = self.loosen_binding(db_1, db_2, comment.into());
+						let _guard = loosen_binding(db_1, db_2, comment.into());
 						if log_enabled!(Error) && comment.data() != c_1 {
 							if c_1 == c_2 {
 								error!("Unexpected comment data that won't be updated: Expected {:?} but found {:?}", c_1, comment.data(),);
@@ -207,7 +207,7 @@ impl DomDiffer {
 							);
 						}
 
-						let _guard = self.loosen_binding(db_1, db_2, html_element.into());
+						let _guard = loosen_binding(db_1, db_2, html_element.into());
 
 						self.update_element(document, e_1, e_2, html_element, ElementMode::HtmlOrCustom)
 					}
@@ -276,7 +276,7 @@ impl DomDiffer {
 							);
 						}
 
-						let _guard = self.loosen_binding(db_1, db_2, element.into());
+						let _guard = loosen_binding(db_1, db_2, element.into());
 
 						self.update_element(document, e_1, e_2, element, ElementMode::MathMl)
 					}
@@ -345,7 +345,7 @@ impl DomDiffer {
 							);
 						}
 
-						let _guard = self.loosen_binding(db_1, db_2, svg_element.into());
+						let _guard = loosen_binding(db_1, db_2, svg_element.into());
 
 						self.update_element(document, e_1, e_2, svg_element, ElementMode::Svg)
 					}
@@ -382,9 +382,9 @@ impl DomDiffer {
 							}
 						};
 
-						let _guard = self.loosen_binding(db_1, db_2, text.into());
+						let _guard = loosen_binding(db_1, db_2, text.into());
 						if text.data() != t_1 {
-							error!("Uself.nexpected text data: Expected {:?} but found {:?}. Overwriting.", t_1, text.data(),);
+							error!("Unexpected text data: Expected {:?} but found {:?}. Overwriting.", t_1, text.data(),);
 						} else if t_1 != t_2 {
 							text.set_data(t_2)
 						}
@@ -405,7 +405,7 @@ impl DomDiffer {
 								if e_1.name.eq_ignore_ascii_case(e_2.name) {
 									warn!(
 										"Recreating element due to different tag name casing: {:?} -> {:?}\n\
-								This is a `cfg!(debug_assertions)`-only warning, but the performance impact will persist in production.",
+										This is a `cfg!(debug_assertions)`-only warning, but the performance impact will persist in production.",
 										e_1.name, e_2.name
 									)
 								}
@@ -770,39 +770,6 @@ impl DomDiffer {
 		}
 	}
 
-	#[allow(clippy::type_complexity)]
-	#[must_use]
-	fn loosen_binding<'a, T>(&mut self, previous: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>, next: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>, parameter: &'a T) -> impl 'a + Drop {
-		#![allow(clippy::items_after_statements)]
-
-		return if previous == next {
-			BindingTransition { next: None, parameter }
-		} else {
-			if let Some(previous) = previous {
-				previous.call(DomRef::Removing(parameter));
-			}
-			BindingTransition { next, parameter }
-		};
-
-		struct BindingTransition<'a, T>
-		where
-			fn(DomRef<&'_ T>): CallbackSignature,
-		{
-			next: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>,
-			parameter: &'a T,
-		}
-		impl<'a, T> Drop for BindingTransition<'a, T>
-		where
-			fn(DomRef<&'_ T>): CallbackSignature,
-		{
-			fn drop(&mut self) {
-				if let Some(next) = self.next {
-					next.call(DomRef::Added(self.parameter));
-				}
-			}
-		}
-	}
-
 	fn unbind_node(&mut self, document: &web_sys::Document, node: &lignin::Node<ThreadBound>, dom_slice: &web_sys::NodeList, i: &mut u32, depth_limit: usize) {
 		if depth_limit == 0 {
 			return error!("Depth limit reached");
@@ -991,4 +958,37 @@ enum ElementMode {
 	HtmlOrCustom,
 	MathMl,
 	Svg,
+}
+
+#[allow(clippy::type_complexity)]
+#[must_use]
+fn loosen_binding<'a, T>(previous: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>, next: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>, parameter: &'a T) -> impl 'a + Drop {
+	#![allow(clippy::items_after_statements)]
+
+	return if previous == next {
+		BindingTransition { next: None, parameter }
+	} else {
+		if let Some(previous) = previous {
+			previous.call(DomRef::Removing(parameter));
+		}
+		BindingTransition { next, parameter }
+	};
+
+	struct BindingTransition<'a, T>
+	where
+		fn(DomRef<&'_ T>): CallbackSignature,
+	{
+		next: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>,
+		parameter: &'a T,
+	}
+	impl<'a, T> Drop for BindingTransition<'a, T>
+	where
+		fn(DomRef<&'_ T>): CallbackSignature,
+	{
+		fn drop(&mut self) {
+			if let Some(next) = self.next {
+				next.call(DomRef::Added(self.parameter));
+			}
+		}
+	}
 }
