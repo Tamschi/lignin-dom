@@ -1,4 +1,4 @@
-use lignin::{CallbackRef, CallbackRegistration, DomRef, Node, ReorderableFragment, ThreadBound};
+use lignin::{CallbackRef, CallbackRegistration, DomRef, Element, ElementCreationOptions, Node, ReorderableFragment, ThreadBound};
 use lignin_dom::{diff::DomDiffer, load::Allocator as _};
 use log::Level;
 use std::cell::RefCell;
@@ -80,6 +80,24 @@ fn memoized() {
 		|dom_binding| Node::Memoized {
 			state_key: 0,
 			content: Allocator.allocate(Node::Text { text: "Hello memoized!", dom_binding }),
+		},
+		2,
+		1,
+	);
+}
+
+#[wasm_bindgen_test]
+fn minimal_div() {
+	test_create(
+		|dom_binding| Node::HtmlElement {
+			element: Allocator.allocate(Element {
+				name: "DIV",
+				creation_options: ElementCreationOptions::new(),
+				attributes: &[],
+				content: Node::Multi(&[]),
+				event_bindings: &[],
+			}),
+			dom_binding,
 		},
 		2,
 		1,

@@ -117,7 +117,9 @@ impl DomDiffer {
 						}
 					}
 
-					(lignin::Node::HtmlElement { element: e_1, dom_binding: db_1 }, lignin::Node::HtmlElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name => {
+					(lignin::Node::HtmlElement { element: e_1, dom_binding: db_1 }, lignin::Node::HtmlElement { element: e_2, dom_binding: db_2 })
+						if e_1.name == e_2.name && e_1.creation_options == e_2.creation_options =>
+					{
 						let node = match dom_slice.get(*i) {
 							Some(node) => node,
 							None => {
@@ -184,7 +186,9 @@ impl DomDiffer {
 						self.update_element(document, e_1, e_2, html_element, ElementMode::HtmlOrCustom)
 					}
 
-					(lignin::Node::MathMlElement { element: e_1, dom_binding: db_1 }, lignin::Node::MathMlElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name => {
+					(lignin::Node::MathMlElement { element: e_1, dom_binding: db_1 }, lignin::Node::MathMlElement { element: e_2, dom_binding: db_2 })
+						if e_1.name == e_2.name && e_1.creation_options == e_2.creation_options =>
+					{
 						let node = match dom_slice.get(*i) {
 							Some(node) => node,
 							None => {
@@ -251,7 +255,9 @@ impl DomDiffer {
 						self.update_element(document, e_1, e_2, element, ElementMode::MathMl)
 					}
 
-					(lignin::Node::SvgElement { element: e_1, dom_binding: db_1 }, lignin::Node::SvgElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name => {
+					(lignin::Node::SvgElement { element: e_1, dom_binding: db_1 }, lignin::Node::SvgElement { element: e_2, dom_binding: db_2 })
+						if e_1.name == e_2.name && e_1.creation_options == e_2.creation_options =>
+					{
 						let node = match dom_slice.get(*i) {
 							Some(node) => node,
 							None => {
@@ -580,7 +586,44 @@ impl DomDiffer {
 					}
 				}
 				lignin::Node::HtmlElement { element, dom_binding } => {
-					todo!()
+					let &lignin::Element { name, creation_options, .. } = element;
+
+					let dom_element = match match creation_options.is() {
+						// This isn't entirely modern, but is well-supported.
+						Some(is) => document.create_element_with_str(name, is),
+						None => document.create_element(name),
+					} {
+						Ok(element) => element,
+						Err(error) => {
+							error!("Failed to create HTML element: {:?}", error);
+							continue;
+						}
+					}
+					.dyn_into::<web_sys::HtmlElement>()
+					.unwrap_throw();
+
+					if let Err(error) = parent_element.insert_before(dom_element.as_ref(), next_sibling) {
+						error!("Failed to insert HTML element: {:?}", error);
+						continue;
+					}
+
+					self.update_element(
+						document,
+						&lignin::Element {
+							name,
+							creation_options,
+							attributes: &[],
+							content: lignin::Node::Multi(&[]),
+							event_bindings: &[],
+						},
+						element,
+						&dom_element,
+						ElementMode::HtmlOrCustom,
+					);
+
+					if let Some(dom_binding) = dom_binding {
+						dom_binding.call(DomRef::Added(&dom_element.into()))
+					}
 				}
 				lignin::Node::MathMlElement { element, dom_binding } => {
 					todo!()
@@ -729,17 +772,20 @@ impl DomDiffer {
 	}
 
 	#[allow(clippy::items_after_statements)]
+	#[allow(clippy::similar_names)]
 	fn update_element(
 		&mut self,
 		document: &web_sys::Document,
 		&lignin::Element {
 			name: n_1,
+			creation_options: co_1,
 			attributes: mut a_1,
 			content: ref c_1,
 			event_bindings: mut eb_1,
 		}: &lignin::Element<ThreadBound>,
 		&lignin::Element {
 			name: n_2,
+			creation_options: co_2,
 			attributes: mut a_2,
 			content: ref c_2,
 			event_bindings: mut eb_2,
@@ -748,6 +794,7 @@ impl DomDiffer {
 		mode: ElementMode,
 	) {
 		debug_assert_eq!(n_1, n_2);
+		debug_assert_eq!(co_1, co_2);
 
 		fn remove_attribute(element: &web_sys::Element, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute, mode: ElementMode) {
 			match attributes.remove_named_item(name) {
@@ -788,7 +835,9 @@ impl DomDiffer {
 			add_attribute(document, element, &attributes, added, mode)
 		}
 
-		todo!()
+		if !eb_1.is_empty() || !eb_2.is_empty() || !c_1.dom_empty() || !c_2.dom_empty() {
+			todo!()
+		}
 	}
 }
 

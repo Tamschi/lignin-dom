@@ -2,7 +2,7 @@
 
 use lignin::ThreadSafe;
 use std::{convert::TryInto, iter};
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, UnwrapThrowExt};
 
 pub trait Allocator<'a> {
 	fn allocate<T>(&self, instance: T) -> &'a T;
@@ -73,6 +73,7 @@ pub fn load_element<'a, A: Allocator<'a>>(allocator: &A, element: &web_sys::Elem
 	let node: &web_sys::Node = element.as_ref();
 	lignin::Element {
 		name: allocator.allocate(element.tag_name()),
+		creation_options: lignin::ElementCreationOptions::new().with_is(element.get_attribute("is").map(|is| allocator.allocate(is).as_str())),
 		attributes: load_attributes(allocator, &element.attributes()),
 		content: load_child_nodes(allocator, &node.child_nodes()),
 		event_bindings: allocator.allocate_slice(&mut iter::empty()),
@@ -80,14 +81,27 @@ pub fn load_element<'a, A: Allocator<'a>>(allocator: &A, element: &web_sys::Elem
 }
 
 pub fn load_attributes<'a, A: Allocator<'a>>(allocator: &A, attributes: &web_sys::NamedNodeMap) -> &'a [lignin::Attribute<'a>] {
-	allocator.allocate_slice(&mut SliceGenerator::new(attributes.length() as usize, |i| {
-		load_attribute(allocator, &attributes.item(i.try_into().unwrap()).unwrap())
+	let reserved_count = match attributes.get_named_item("is") {
+		Some(_) => 1,
+		None => 0,
+	};
+	allocator.allocate_slice(&mut SliceGenerator::new(attributes.length() as usize - reserved_count, {
+		let mut reserved_seen = 0;
+		move |i| load_attribute(allocator, attributes, i.try_into().unwrap_throw(), &mut reserved_seen)
 	}))
 }
 
-pub fn load_attribute<'a, A: Allocator<'a>>(allocator: &A, attribute: &web_sys::Attr) -> lignin::Attribute<'a> {
+pub fn load_attribute<'a, A: Allocator<'a>>(allocator: &A, attributes: &web_sys::NamedNodeMap, index: u32, reserved_seen: &mut u32) -> lignin::Attribute<'a> {
+	let (name, value) = loop {
+		let attribute = attributes.item(index + *reserved_seen).unwrap_throw();
+		let name = attribute.local_name();
+		match name.as_str() {
+			"is" => *reserved_seen += 1,
+			_ => break (name, attribute.value()),
+		}
+	};
 	lignin::Attribute {
-		name: allocator.allocate(attribute.local_name()),
-		value: allocator.allocate(attribute.value()),
+		name: allocator.allocate(name),
+		value: allocator.allocate(value),
 	}
 }
