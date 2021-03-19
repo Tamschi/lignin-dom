@@ -84,7 +84,9 @@ impl DomDiffer {
 				.as_ref(),
 			depth_limit,
 		);
-		self.handler_handles.drain_weak();
+
+		let drain = self.handler_handles.drain_weak();
+		trace!("Freed {} event listener(s).", drain.count())
 	}
 
 	#[allow(clippy::too_many_arguments)]
