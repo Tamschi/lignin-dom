@@ -104,6 +104,42 @@ fn minimal_div() {
 	);
 }
 
+#[wasm_bindgen_test]
+fn minimal_math() {
+	test_create(
+		|dom_binding| Node::MathMlElement {
+			element: Allocator.allocate(Element {
+				name: "math",
+				creation_options: ElementCreationOptions::new(),
+				attributes: &[],
+				content: Node::Multi(&[]),
+				event_bindings: &[],
+			}),
+			dom_binding,
+		},
+		2,
+		1,
+	);
+}
+
+#[wasm_bindgen_test]
+fn minimal_svg() {
+	test_create(
+		|dom_binding| Node::SvgElement {
+			element: Allocator.allocate(Element {
+				name: "svg",
+				creation_options: ElementCreationOptions::new(),
+				attributes: &[],
+				content: Node::Multi(&[]),
+				event_bindings: &[],
+			}),
+			dom_binding,
+		},
+		2,
+		1,
+	);
+}
+
 static mut LOG_INITIALIZED: bool = false;
 
 fn test_create<T>(vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>) -> Node<'static, ThreadBound>, depth_limit: usize, binding_count: isize) {

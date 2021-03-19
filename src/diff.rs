@@ -494,17 +494,17 @@ impl DomDiffer {
 				}
 
 				lignin::Node::HtmlElement { element, dom_binding } => {
-					trace!("Removing HTML element:");
+					trace!("Removing HTML element <{:?}>:", element.name);
 					remove_element!(element, dom_binding, "HTML", web_sys::HtmlElement)
 				}
 
 				lignin::Node::MathMlElement { element, dom_binding } => {
-					trace!("Removing MathML element:");
+					trace!("Removing MathML element <{:?}>:", element.name);
 					remove_element!(element, dom_binding, "MathML", web_sys::Element)
 				}
 
 				lignin::Node::SvgElement { element, dom_binding } => {
-					trace!("Removing SVG element:");
+					trace!("Removing SVG element <{:?}>:", element.name);
 					remove_element!(element, dom_binding, "SVG", web_sys::SvgElement)
 				}
 
@@ -587,6 +587,7 @@ impl DomDiffer {
 				}
 				lignin::Node::HtmlElement { element, dom_binding } => {
 					let &lignin::Element { name, creation_options, .. } = element;
+					trace!("Creating HTML element <{:?}>:", name);
 
 					let dom_element = match match creation_options.is() {
 						// This isn't entirely modern, but is well-supported.
@@ -626,10 +627,86 @@ impl DomDiffer {
 					}
 				}
 				lignin::Node::MathMlElement { element, dom_binding } => {
-					todo!()
+					let &lignin::Element { name, creation_options, .. } = element;
+					trace!("Creating MathML element <{:?}>:", name);
+
+					let dom_element = match match creation_options.is() {
+						// This isn't entirely modern, but is well-supported.
+						Some(is) => document.create_element_ns_with_str(Some("http://www.w3.org/1998/Math/MathML"), name, is),
+						None => document.create_element_ns(Some("http://www.w3.org/1998/Math/MathML"), name),
+					} {
+						Ok(element) => element,
+						Err(error) => {
+							error!("Failed to create MathML element: {:?}", error);
+							continue;
+						}
+					}
+					.dyn_into::<web_sys::Element>()
+					.unwrap_throw();
+
+					if let Err(error) = parent_element.insert_before(dom_element.as_ref(), next_sibling) {
+						error!("Failed to insert MathML element: {:?}", error);
+						continue;
+					}
+
+					self.update_element(
+						document,
+						&lignin::Element {
+							name,
+							creation_options,
+							attributes: &[],
+							content: lignin::Node::Multi(&[]),
+							event_bindings: &[],
+						},
+						element,
+						&dom_element,
+						ElementMode::MathMl,
+					);
+
+					if let Some(dom_binding) = dom_binding {
+						dom_binding.call(DomRef::Added(&dom_element.into()))
+					}
 				}
 				lignin::Node::SvgElement { element, dom_binding } => {
-					todo!()
+					let &lignin::Element { name, creation_options, .. } = element;
+					trace!("Creating SVG element <{:?}>:", name);
+
+					let dom_element = match match creation_options.is() {
+						// This isn't entirely modern, but is well-supported.
+						Some(is) => document.create_element_ns_with_str(Some("http://www.w3.org/2000/svg"), name, is),
+						None => document.create_element_ns(Some("http://www.w3.org/2000/svg"), name),
+					} {
+						Ok(element) => element,
+						Err(error) => {
+							error!("Failed to create SVG element: {:?}", error);
+							continue;
+						}
+					}
+					.dyn_into::<web_sys::SvgElement>()
+					.unwrap_throw();
+
+					if let Err(error) = parent_element.insert_before(dom_element.as_ref(), next_sibling) {
+						error!("Failed to insert SVG element: {:?}", error);
+						continue;
+					}
+
+					self.update_element(
+						document,
+						&lignin::Element {
+							name,
+							creation_options,
+							attributes: &[],
+							content: lignin::Node::Multi(&[]),
+							event_bindings: &[],
+						},
+						element,
+						&dom_element,
+						ElementMode::Svg,
+					);
+
+					if let Some(dom_binding) = dom_binding {
+						dom_binding.call(DomRef::Added(&dom_element.into()))
+					}
 				}
 				lignin::Node::Memoized { state_key, content } => {
 					trace!("Creating memoized {:?}:", state_key);
@@ -707,29 +784,38 @@ impl DomDiffer {
 
 		match *node {
 			lignin::Node::Comment { comment, dom_binding } => {
+				trace!("Unbinding comment.");
 				todo!()
 			}
 			lignin::Node::HtmlElement { element, dom_binding } => {
+				trace!("Unbinding HTML element <{:?}>:", element.name);
 				todo!()
 			}
 			lignin::Node::MathMlElement { element, dom_binding } => {
+				trace!("Unbinding MathML element <{:?}>:", element.name);
 				todo!()
 			}
 			lignin::Node::SvgElement { element, dom_binding } => {
+				trace!("Unbinding SVG element <{:?}>:", element.name);
 				todo!()
 			}
 			lignin::Node::Memoized { state_key: _, content } => self.unbind_node(document, content, dom_slice, i, depth_limit - 1),
 			lignin::Node::Multi(nodes) => {
+				trace!("Unbinding multi - start");
 				for node in nodes {
 					self.unbind_node(document, node, dom_slice, i, depth_limit - 1)
 				}
+				trace!("Unbinding multi - end");
 			}
 			lignin::Node::Keyed(reorderable_fragments) => {
+				trace!("Unbinding keyed - start");
 				for lignin::ReorderableFragment { dom_key: _, content } in reorderable_fragments {
 					self.unbind_node(document, content, dom_slice, i, depth_limit - 1)
 				}
+				trace!("Unbinding keyed - end");
 			}
 			lignin::Node::Text { text, dom_binding } => {
+				trace!("Unbinding text.");
 				todo!()
 			}
 			lignin::Node::RemnantSite(_) => {
@@ -793,10 +879,13 @@ impl DomDiffer {
 		element: &web_sys::Element,
 		mode: ElementMode,
 	) {
+		trace!("Updating element ({:?}) - start", mode);
+
 		debug_assert_eq!(n_1, n_2);
 		debug_assert_eq!(co_1, co_2);
 
 		fn remove_attribute(element: &web_sys::Element, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute, mode: ElementMode) {
+			trace!("Removing attribute {:?}={:?}.", name, value);
 			match attributes.remove_named_item(name) {
 				Err(error) => warn!("Could not remove attribute with name {:?}, value {:?}: {:?}", name, value, error),
 				Ok(removed) => {
@@ -808,6 +897,7 @@ impl DomDiffer {
 		}
 
 		fn add_attribute(document: &web_sys::Document, element: &web_sys::Element, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute, mode: ElementMode) {
+			trace!("Adding attribute {:?}={:?}.", name, value);
 			let attribute = match document.create_attribute(name) {
 				Ok(attribute) => attribute,
 				Err(error) => return error!("Could not create attribute {:?}: {:?}", name, error),
@@ -838,11 +928,13 @@ impl DomDiffer {
 		if !eb_1.is_empty() || !eb_2.is_empty() || !c_1.dom_empty() || !c_2.dom_empty() {
 			todo!()
 		}
+
+		trace!("Updating element ({:?}) - end", mode);
 	}
 }
 
 /// Controls how certain attributes are namespaced.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum ElementMode {
 	HtmlOrCustom,
 	MathMl,
