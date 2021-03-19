@@ -14,6 +14,7 @@ pub struct DomDiffer {
 	handler_handles: RcHashMap<CallbackRef<ThreadBound, fn(lignin::web::Event)>, u16, Function>,
 	common_handler: Closure<dyn Fn(JsValue, web_sys::Event)>,
 	element: web_sys::Element,
+	event_listener_options_cache: [Option<web_sys::AddEventListenerOptions>; 8],
 }
 impl DomDiffer {
 	#[must_use]
@@ -31,14 +32,37 @@ impl DomDiffer {
 					.call(event.into());
 			})),
 			element,
+			event_listener_options_cache: [None, None, None, None, None, None, None, None],
 		}
 	}
 
-	fn create_listener(&mut self, callback_ref: CallbackRef<ThreadBound, fn(lignin::web::Event)>) -> &Function {
+	fn create_listener_and_get_cached_add_event_listener_options(
+		&mut self,
+		callback_ref: CallbackRef<ThreadBound, fn(lignin::web::Event)>,
+		options: &lignin::EventBindingOptions,
+	) -> (&Function, &web_sys::AddEventListenerOptions) {
 		let common_handler = &self.common_handler;
-		self.handler_handles
+		let callback = self
+			.handler_handles
 			.increment_or_insert_with(callback_ref, |callback_ref| common_handler.as_ref().unchecked_ref::<Function>().bind1(&JsValue::UNDEFINED, &callback_ref.into_js()))
-			.expect_throw("Too many (more than 65k) active references to the same `CallbackRef`")
+			.expect_throw("Too many (more than 65k) active references to the same `CallbackRef`");
+
+		let options = {
+			let entry = self
+				.event_listener_options_cache
+				.get_mut(options.capture() as usize + options.once() as usize * 2 + options.passive() as usize * 4)
+				.unwrap_throw();
+
+			if entry.is_none() {
+				let mut web_options = web_sys::AddEventListenerOptions::new();
+				web_options.capture(options.capture()).once(options.once()).passive(options.passive());
+				*entry = Some(web_options)
+			}
+
+			entry.as_ref().unwrap_throw()
+		};
+
+		(callback, options)
 	}
 
 	pub fn update_child_nodes(&mut self, vdom_a: &[lignin::Node<'_, ThreadBound>], vdom_b: &[lignin::Node<'_, ThreadBound>], depth_limit: usize) {
@@ -830,8 +854,9 @@ impl DomDiffer {
 		}
 
 		match *node {
-			lignin::Node::Comment { .. } | lignin::Node::Text { .. } => (),
+			lignin::Node::Comment { .. } | lignin::Node::Text { .. } => trace!("Nothing to do for comment or text."),
 			lignin::Node::HtmlElement { element, dom_binding: _ } | lignin::Node::MathMlElement { element, dom_binding: _ } | lignin::Node::SvgElement { element, dom_binding: _ } => {
+				trace!("Decrementing element <{:?}>:", element.name);
 				for lignin::EventBinding { callback, .. } in element.event_bindings {
 					match self.handler_handles.weak_decrement(callback) {
 						Ok(Some(_)) => (),
@@ -839,17 +864,26 @@ impl DomDiffer {
 						Err(rc_hash_map::CountSaturatedError) => throw_str("Tried to decrement handler reference more often than bound"),
 					}
 				}
+
+				self.decrement_handlers(&element.content, depth_limit - 1)
 			}
-			lignin::Node::Memoized { state_key: _, content } => self.decrement_handlers(content, depth_limit - 1),
+			lignin::Node::Memoized { state_key, content } => {
+				trace!("Decrementing memoized {:?}:", state_key);
+				self.decrement_handlers(content, depth_limit - 1)
+			}
 			lignin::Node::Multi(nodes) => {
+				trace!("Decrementing multi - start");
 				for node in nodes {
 					self.decrement_handlers(node, depth_limit - 1)
 				}
+				trace!("Decrementing multi - end");
 			}
 			lignin::Node::Keyed(reorderable_fragments) => {
+				trace!("Decrementing keyed - start");
 				for lignin::ReorderableFragment { dom_key: _, content } in reorderable_fragments {
 					self.decrement_handlers(content, depth_limit - 1)
 				}
+				trace!("Decrementing keyed - end");
 			}
 			lignin::Node::RemnantSite(_) => {
 				todo!("Decrement `RemnantSite` event handlers")
@@ -925,7 +959,23 @@ impl DomDiffer {
 			add_attribute(document, element, &attributes, added, mode)
 		}
 
-		if !eb_1.is_empty() || !eb_2.is_empty() || !c_1.dom_empty() || !c_2.dom_empty() {
+		for lignin::EventBinding { name, callback, options } in eb_1.iter().filter(|eb| !eb_2.contains(eb)) {
+			trace!("Removing event listener {:?} ({:?}).", name, options);
+			let callback = self.handler_handles.weak_decrement(callback).unwrap_throw().unwrap_throw();
+			if let Err(error) = element.remove_event_listener_with_callback_and_bool(name, callback, options.capture()) {
+				error!("Failed to remove event listener {:?} ({:?}): {:?}", name, options, error)
+			}
+		}
+
+		for lignin::EventBinding { name, callback, ref options } in eb_2.iter().copied().filter(|eb| !eb_1.contains(eb)) {
+			trace!("Adding event listener {:?} ({:?}).", name, options);
+			let (callback, options) = self.create_listener_and_get_cached_add_event_listener_options(callback, options);
+			if let Err(error) = element.add_event_listener_with_callback_and_add_event_listener_options(name, callback, options) {
+				error!("Failed to remove event listener {:?}: {:?}", name, error)
+			}
+		}
+
+		if !c_1.dom_empty() || !c_2.dom_empty() {
 			todo!()
 		}
 

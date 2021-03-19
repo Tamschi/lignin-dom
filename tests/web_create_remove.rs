@@ -1,4 +1,4 @@
-use lignin::{CallbackRef, CallbackRegistration, DomRef, Element, ElementCreationOptions, Node, ReorderableFragment, ThreadBound};
+use lignin::{web::Event, CallbackRef, CallbackRegistration, DomRef, Element, ElementCreationOptions, EventBinding, EventBindingOptions, Node, ReorderableFragment, ThreadBound};
 use lignin_dom::{diff::DomDiffer, load::Allocator as _};
 use log::Level;
 use std::cell::RefCell;
@@ -105,6 +105,29 @@ fn minimal_div() {
 }
 
 #[wasm_bindgen_test]
+fn clickable_div() {
+	let clicked = CallbackRegistration::<_, fn(Event)>::new(Box::pin(()).as_ref(), |_, _| ());
+	test_create(
+		|dom_binding| Node::HtmlElement {
+			element: Allocator.allocate(Element {
+				name: "DIV",
+				creation_options: ElementCreationOptions::new(),
+				attributes: &[],
+				content: Node::Multi(&[]),
+				event_bindings: Allocator.allocate([EventBinding {
+					name: "click",
+					callback: clicked.to_ref_thread_bound(),
+					options: EventBindingOptions::new(),
+				}]),
+			}),
+			dom_binding,
+		},
+		2,
+		1,
+	);
+}
+
+#[wasm_bindgen_test]
 fn minimal_math() {
 	test_create(
 		|dom_binding| Node::MathMlElement {
@@ -142,7 +165,7 @@ fn minimal_svg() {
 
 static mut LOG_INITIALIZED: bool = false;
 
-fn test_create<T>(vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>) -> Node<'static, ThreadBound>, depth_limit: usize, binding_count: isize) {
+fn test_create<'a, T>(vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>) -> Node<'a, ThreadBound>, depth_limit: usize, binding_count: isize) {
 	unsafe {
 		if !LOG_INITIALIZED {
 			console_log::init_with_level(Level::Trace).unwrap();
