@@ -37,6 +37,7 @@ where
 		Self(HashMap::with_hasher(S::default()))
 	}
 
+	#[allow(clippy::shadow_unrelated)]
 	pub fn increment_or_insert_with<F: FnOnce(&K) -> V>(&mut self, k: K, v: F) -> Result<&mut V, CountSaturatedError> {
 		match self.0.entry(k) {
 			Entry::Occupied(occupied) => {
@@ -49,18 +50,6 @@ where
 				let (_, v) = vacant.insert((C::one(), v));
 				Ok(v)
 			}
-		}
-	}
-
-	pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
-	where
-		K: Borrow<Q>,
-		Q: Eq + Hash,
-	{
-		match self.0.get(k) {
-			None => None,
-			Some((c, _)) if c.is_zero() => None,
-			Some((_, v)) => Some(v),
 		}
 	}
 
