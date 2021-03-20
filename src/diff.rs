@@ -778,8 +778,31 @@ impl DomDiffer {
 		match *node {
 			lignin::Node::Comment { comment, dom_binding } => {
 				trace!("Unbinding comment.");
-				todo!()
+				let node = match dom_slice.get(*i) {
+					Some(node) => node,
+					None => {
+						error!("Expected to unbind comment beyond end of `web_sys::NodeList`. Skipping.");
+						return;
+					}
+				};
+
+				let dom_comment = match node.dyn_ref::<web_sys::Comment>() {
+					Some(comment) => comment,
+					None => {
+						error!("Expected to unbind `web_sys::Comment` but found {:?}; Skipping.", node);
+						return;
+					}
+				};
+
+				if let Some(dom_binding) = dom_binding {
+					dom_binding.call(DomRef::Removing(dom_comment.into()))
+				}
+
+				if log_enabled!(Error) && dom_comment.data() != comment {
+					error!("Unexpected unbound comment data: {:?}", dom_comment.data())
+				}
 			}
+
 			lignin::Node::HtmlElement { element, dom_binding } => {
 				trace!("Unbinding HTML element <{:?}>:", element.name);
 				todo!()
@@ -792,6 +815,7 @@ impl DomDiffer {
 				trace!("Unbinding SVG element <{:?}>:", element.name);
 				todo!()
 			}
+
 			lignin::Node::Memoized { state_key: _, content } => self.unbind_node(document, content, dom_slice, i, depth_limit - 1),
 			lignin::Node::Multi(nodes) => {
 				trace!("Unbinding multi - start");
@@ -807,10 +831,34 @@ impl DomDiffer {
 				}
 				trace!("Unbinding keyed - end");
 			}
+
 			lignin::Node::Text { text, dom_binding } => {
 				trace!("Unbinding text.");
-				todo!()
+				let node = match dom_slice.get(*i) {
+					Some(node) => node,
+					None => {
+						error!("Expected to unbind text beyond end of `web_sys::NodeList`. Skipping.");
+						return;
+					}
+				};
+
+				let dom_text = match node.dyn_ref::<web_sys::Text>() {
+					Some(text) => text,
+					None => {
+						error!("Expected to unbind `web_sys::Text` but found {:?}; Skipping.", node);
+						return;
+					}
+				};
+
+				if let Some(dom_binding) = dom_binding {
+					dom_binding.call(DomRef::Removing(dom_text.into()))
+				}
+
+				if log_enabled!(Error) && dom_text.data() != text {
+					error!("Unexpected unbound text data: {:?}", dom_text.data())
+				}
 			}
+
 			lignin::Node::RemnantSite(_) => {
 				todo!("Unbind `RemnantSite`")
 			}
