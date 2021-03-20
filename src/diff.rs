@@ -358,8 +358,8 @@ impl DomDiffer {
 
 					(lignin::Node::Multi(n_1), lignin::Node::Multi(n_2)) => self.diff_splice_node_list(document, n_1, n_2, parent_element, dom_slice, i, next_sibling, depth_limit - 1),
 
-					(lignin::Node::Keyed(_), lignin::Node::Keyed(_)) => {
-						todo!()
+					(lignin::Node::Keyed(rf_1), lignin::Node::Keyed(rf_2)) => {
+						todo!("Diff `Keyed`")
 					}
 
 					(lignin::Node::Text { text: t_1, dom_binding: db_1 }, lignin::Node::Text { text: t_2, dom_binding: db_2 }) => {
@@ -611,6 +611,7 @@ impl DomDiffer {
 						dom_binding.call(DomRef::Added(&dom_comment.into()))
 					}
 				}
+
 				lignin::Node::HtmlElement { element, dom_binding } => {
 					let &lignin::Element { name, creation_options, .. } = element;
 					trace!("Creating HTML element <{:?}>:", name);
@@ -652,6 +653,7 @@ impl DomDiffer {
 						dom_binding.call(DomRef::Added(&dom_element.into()))
 					}
 				}
+
 				lignin::Node::MathMlElement { element, dom_binding } => {
 					let &lignin::Element { name, creation_options, .. } = element;
 					trace!("Creating MathML element <{:?}>:", name);
@@ -693,6 +695,7 @@ impl DomDiffer {
 						dom_binding.call(DomRef::Added(&dom_element.into()))
 					}
 				}
+
 				lignin::Node::SvgElement { element, dom_binding } => {
 					let &lignin::Element { name, creation_options, .. } = element;
 					trace!("Creating SVG element <{:?}>:", name);
@@ -734,6 +737,7 @@ impl DomDiffer {
 						dom_binding.call(DomRef::Added(&dom_element.into()))
 					}
 				}
+
 				lignin::Node::Memoized { state_key, content } => {
 					trace!("Creating memoized {:?}:", state_key);
 					self.diff_splice_node_list(document, &[], slice::from_ref(content), parent_element, dom_slice, i, next_sibling, depth_limit - 1);
@@ -751,6 +755,7 @@ impl DomDiffer {
 					}
 					trace!("Creating keyed - end");
 				}
+
 				lignin::Node::Text { text, dom_binding } => {
 					trace!("Creating text node.");
 					let dom_text = document.create_text_node(text);
@@ -762,6 +767,7 @@ impl DomDiffer {
 						dom_binding.call(DomRef::Added(&dom_text.into()))
 					}
 				}
+
 				lignin::Node::RemnantSite(_) => {
 					todo!("Create `RemnantSite`")
 				}
@@ -935,7 +941,7 @@ impl DomDiffer {
 		debug_assert_eq!(n_1, n_2);
 		debug_assert_eq!(co_1, co_2);
 
-		fn remove_attribute(element: &web_sys::Element, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute, mode: ElementMode) {
+		fn remove_attribute(attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute, mode: ElementMode) {
 			trace!("Removing attribute {:?}={:?}.", name, value);
 			match attributes.remove_named_item(name) {
 				Err(error) => warn!("Could not remove attribute with name {:?}, value {:?}: {:?}", name, value, error),
@@ -947,7 +953,7 @@ impl DomDiffer {
 			}
 		}
 
-		fn add_attribute(document: &web_sys::Document, element: &web_sys::Element, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute, mode: ElementMode) {
+		fn add_attribute(document: &web_sys::Document, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute, mode: ElementMode) {
 			trace!("Adding attribute {:?}={:?}.", name, value);
 			let attribute = match document.create_attribute(name) {
 				Ok(attribute) => attribute,
@@ -969,11 +975,11 @@ impl DomDiffer {
 		}
 
 		for removed in a_1 {
-			remove_attribute(element, &attributes, removed, mode)
+			remove_attribute(&attributes, removed, mode)
 		}
 
 		for added in a_2 {
-			add_attribute(document, element, &attributes, added, mode)
+			add_attribute(document, &attributes, added, mode)
 		}
 
 		for lignin::EventBinding { name, callback, options } in eb_1.iter().filter(|eb| !eb_2.contains(eb)) {
