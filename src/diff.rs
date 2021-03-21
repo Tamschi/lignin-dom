@@ -921,7 +921,7 @@ enum ElementMode {
 
 #[allow(clippy::type_complexity)]
 #[must_use]
-fn loosen_binding<'a, T>(previous: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>, next: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>, parameter: &'a T) -> impl 'a + Drop {
+fn loosen_binding<T>(previous: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>, next: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>, parameter: &T) -> impl '_ + Drop {
 	#![allow(clippy::items_after_statements)]
 
 	return if previous == next {
