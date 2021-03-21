@@ -73,10 +73,7 @@ fn git_hub() {
 
 #[test]
 fn issues() {
-	version_sync::assert_contains_regex!(
-		"README.md",
-		&format!(r"^\[!\[open issues\]\(https://img\.shields\.io/github/issues-raw/{0}/{{name}}\)\]\(https://github\.com/{0}/{{name}}/issues\)$", USER)
-	);
+	version_sync::assert_contains_regex!("README.md", &format!(r"^\[!\[open issues\]\(https://img\.shields\.io/github/issues-raw/{0}/{{name}}\)\]\(https://github\.com/{0}/{{name}}/issues\)$", USER));
 }
 
 #[test]
