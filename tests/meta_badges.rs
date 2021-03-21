@@ -41,10 +41,7 @@ fn docs() {
 
 #[test]
 fn rust_version() {
-	version_sync::assert_contains_regex!(
-		"README.md",
-		&format!(r"^!\[Rust {0}\]\(https://img\.shields\.io/static/v1\?logo=Rust&label=&message={0}&color=grey\)$", RUST_VERSION,)
-	);
+	version_sync::assert_contains_regex!("README.md", &format!(r"^!\[Rust {0}\]\(https://img\.shields\.io/static/v1\?logo=Rust&label=&message={0}&color=grey\)$", RUST_VERSION));
 }
 
 #[test]
@@ -66,14 +63,11 @@ fn license() {
 
 #[test]
 fn git_hub() {
-	version_sync::assert_contains_regex!("Cargo.toml", &format!(r#"^repository = "https://github.com/{0}/{{name}}"$"#, USER,));
+	version_sync::assert_contains_regex!("Cargo.toml", &format!(r#"^repository = "https://github.com/{0}/{{name}}"$"#, USER));
 
 	version_sync::assert_contains_regex!(
 		"README.md",
-		&format!(
-			r"^\[!\[GitHub\]\(https://img\.shields\.io/static/v1\?logo=GitHub&label=&message=%20&color=grey\)\]\(https://github\.com/{0}/{{name}}\)$",
-			USER,
-		)
+		&format!(r"^\[!\[GitHub\]\(https://img\.shields\.io/static/v1\?logo=GitHub&label=&message=%20&color=grey\)\]\(https://github\.com/{0}/{{name}}\)$", USER)
 	);
 }
 
@@ -81,10 +75,7 @@ fn git_hub() {
 fn issues() {
 	version_sync::assert_contains_regex!(
 		"README.md",
-		&format!(
-			r"^\[!\[open issues\]\(https://img\.shields\.io/github/issues-raw/{0}/{{name}}\)\]\(https://github\.com/{0}/{{name}}/issues\)$",
-			USER,
-		)
+		&format!(r"^\[!\[open issues\]\(https://img\.shields\.io/github/issues-raw/{0}/{{name}}\)\]\(https://github\.com/{0}/{{name}}/issues\)$", USER)
 	);
 }
 
@@ -92,10 +83,7 @@ fn issues() {
 fn pulls() {
 	version_sync::assert_contains_regex!(
 		"README.md",
-		&format!(
-			r"^\[!\[open pull requests\]\(https://img\.shields\.io/github/issues-pr-raw/{0}/{{name}}\)\]\(https://github\.com/{0}/{{name}}/pulls\)$",
-			USER,
-		)
+		&format!(r"^\[!\[open pull requests\]\(https://img\.shields\.io/github/issues-pr-raw/{0}/{{name}}\)\]\(https://github\.com/{0}/{{name}}/pulls\)$", USER)
 	);
 }
 

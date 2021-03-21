@@ -25,26 +25,13 @@ fn comment() {
 
 #[wasm_bindgen_test]
 fn text() {
-	test_create(
-		|dom_binding| Node::Text {
-			text: "Hello lignin-dom text!",
-			dom_binding,
-		},
-		1,
-		1,
-	);
+	test_create(|dom_binding| Node::Text { text: "Hello lignin-dom text!", dom_binding }, 1, 1);
 }
 
 #[wasm_bindgen_test]
 fn multi() {
 	test_create(
-		|dom_binding| {
-			Node::Multi(Allocator.allocate([
-				Node::Text { text: "Hello lignin-dom", dom_binding },
-				Node::Text { text: " multiple ", dom_binding },
-				Node::Text { text: "nodes!", dom_binding },
-			]))
-		},
+		|dom_binding| Node::Multi(Allocator.allocate([Node::Text { text: "Hello lignin-dom", dom_binding }, Node::Text { text: " multiple ", dom_binding }, Node::Text { text: "nodes!", dom_binding }])),
 		2,
 		3,
 	);
