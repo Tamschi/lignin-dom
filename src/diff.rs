@@ -320,7 +320,7 @@ impl DomDiffer {
 								$debug_kind
 							);
 							for removed_node in vdom_a {
-								trace!("Decrementing handlers for further skipped node.");
+								trace!("Decrementing listener handles for handlers for further skipped node.");
 								self.decrement_handlers(removed_node, depth_limit)
 							}
 							break;
@@ -775,7 +775,7 @@ impl DomDiffer {
 		match *node {
 			lignin::Node::Comment { .. } | lignin::Node::Text { .. } => trace!("Nothing to do for comment or text."),
 			lignin::Node::HtmlElement { element, dom_binding: _ } | lignin::Node::MathMlElement { element, dom_binding: _ } | lignin::Node::SvgElement { element, dom_binding: _ } => {
-				trace!("Decrementing element <{:?}>:", element.name);
+				trace!("Decrementing listener handles for element <{:?}>:", element.name);
 				for lignin::EventBinding { callback, .. } in element.event_bindings {
 					match self.handler_handles.weak_decrement(callback) {
 						Ok(Some(_)) => (),
@@ -787,22 +787,22 @@ impl DomDiffer {
 				self.decrement_handlers(&element.content, depth_limit - 1)
 			}
 			lignin::Node::Memoized { state_key, content } => {
-				trace!("Decrementing memoized {:?}:", state_key);
+				trace!("Decrementing listener handles for memoized {:?}:", state_key);
 				self.decrement_handlers(content, depth_limit - 1)
 			}
 			lignin::Node::Multi(nodes) => {
-				trace!("Decrementing multi - start");
+				trace!("Decrementing listener handles for multi - start");
 				for node in nodes {
 					self.decrement_handlers(node, depth_limit - 1)
 				}
-				trace!("Decrementing multi - end");
+				trace!("Decrementing listener handles for multi - end");
 			}
 			lignin::Node::Keyed(reorderable_fragments) => {
-				trace!("Decrementing keyed - start");
+				trace!("Decrementing listener handles for keyed - start");
 				for lignin::ReorderableFragment { dom_key: _, content } in reorderable_fragments {
 					self.decrement_handlers(content, depth_limit - 1)
 				}
-				trace!("Decrementing keyed - end");
+				trace!("Decrementing listener handles for keyed - end");
 			}
 			lignin::Node::RemnantSite(_) => {
 				todo!("Decrement `RemnantSite` event handlers")
