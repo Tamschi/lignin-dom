@@ -3,7 +3,7 @@ use core::{any::type_name, slice};
 use js_sys::Function;
 use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, ThreadBound};
 use log::{
-	error, log_enabled, trace, warn,
+	error, info, log_enabled, trace, warn,
 	Level::{Error, Warn},
 };
 use wasm_bindgen::{closure::Closure, throw_str, JsCast, JsValue, UnwrapThrowExt};
@@ -71,8 +71,12 @@ impl DomDiffer {
 		let owner_document = self.element.owner_document().expect_throw("lignin-dom: No owner document found for root element.");
 		self.diff_splice_node_list(&owner_document, vdom_a, vdom_b, &element, &child_nodes, &mut 0, depth_limit);
 
-		let drain = self.handler_handles.drain_weak();
-		trace!("Freed {} event listener(s).", drain.count())
+		{
+			let drain = self.handler_handles.drain_weak();
+			trace!("Freed {} event listener(s).", drain.count());
+		}
+		info!("Event listener count/cached capacity: {}/{}", self.handler_handles.len(), self.handler_handles.capacity());
+		//TODO: Log/warn heap cache metrics.
 	}
 
 	/// If `vdom_b` is empty, `next_sibling` is guaranteed unused.

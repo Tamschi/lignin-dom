@@ -70,6 +70,18 @@ where
 	pub fn drain_weak(&mut self) -> DrainWeak<'_, K, C, V> {
 		DrainWeak(self.0.drain_filter(DrainWeak::weak_filter))
 	}
+
+	#[allow(clippy::inline_always)] // Trivial proxy.
+	#[inline(always)]
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
+
+	#[allow(clippy::inline_always)] // Trivial proxy.
+	#[inline(always)]
+	pub fn capacity(&self) -> usize {
+		self.0.capacity()
+	}
 }
 
 #[allow(clippy::type_complexity)]
