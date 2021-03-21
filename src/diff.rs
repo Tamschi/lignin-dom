@@ -3,10 +3,9 @@ use core::{any::type_name, slice};
 use js_sys::Function;
 use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, ThreadBound};
 use log::{
-	debug, error, info, log_enabled, trace, warn,
+	error, log_enabled, trace, warn,
 	Level::{Error, Warn},
 };
-use std::convert::TryInto;
 use wasm_bindgen::{closure::Closure, throw_str, JsCast, JsValue, UnwrapThrowExt};
 
 #[allow(clippy::type_complexity)]
@@ -154,7 +153,7 @@ impl DomDiffer {
 
 						let _guard = loosen_binding(db_1, db_2, html_element.into());
 
-						self.update_element(document, e_1, e_2, html_element, ElementMode::HtmlOrCustom)
+						self.update_element(document, e_1, e_2, html_element, ElementMode::HtmlOrCustom, depth_limit)
 					}
 
 					(lignin::Node::MathMlElement { element: e_1, dom_binding: db_1 }, lignin::Node::MathMlElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name && e_1.creation_options == e_2.creation_options => {
@@ -185,7 +184,7 @@ impl DomDiffer {
 
 						let _guard = loosen_binding(db_1, db_2, element.into());
 
-						self.update_element(document, e_1, e_2, element, ElementMode::MathMl)
+						self.update_element(document, e_1, e_2, element, ElementMode::MathMl, depth_limit)
 					}
 
 					(lignin::Node::SvgElement { element: e_1, dom_binding: db_1 }, lignin::Node::SvgElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name && e_1.creation_options == e_2.creation_options => {
@@ -216,7 +215,7 @@ impl DomDiffer {
 
 						let _guard = loosen_binding(db_1, db_2, svg_element.into());
 
-						self.update_element(document, e_1, e_2, svg_element, ElementMode::Svg)
+						self.update_element(document, e_1, e_2, svg_element, ElementMode::Svg, depth_limit)
 					}
 
 					(lignin::Node::Memoized { state_key: sk_1, content: c_1 }, lignin::Node::Memoized { state_key: sk_2, content: c_2 }) => {
@@ -521,6 +520,7 @@ impl DomDiffer {
 						element,
 						&dom_element,
 						ElementMode::HtmlOrCustom,
+						depth_limit,
 					);
 
 					if let Some(dom_binding) = dom_binding {
@@ -563,6 +563,7 @@ impl DomDiffer {
 						element,
 						&dom_element,
 						ElementMode::MathMl,
+						depth_limit,
 					);
 
 					if let Some(dom_binding) = dom_binding {
@@ -605,6 +606,7 @@ impl DomDiffer {
 						element,
 						&dom_element,
 						ElementMode::Svg,
+						depth_limit,
 					);
 
 					if let Some(dom_binding) = dom_binding {
@@ -809,6 +811,7 @@ impl DomDiffer {
 		}: &lignin::Element<ThreadBound>,
 		element: &web_sys::Element,
 		mode: ElementMode,
+		depth_limit: usize,
 	) {
 		trace!("Updating element ({:?}) - start", mode);
 
@@ -856,6 +859,7 @@ impl DomDiffer {
 			add_attribute(document, &attributes, added, mode)
 		}
 
+		//FIXME: This doesn't account for duplicate bindings yet!
 		for lignin::EventBinding { name, callback, options } in eb_1.iter().filter(|eb| !eb_2.contains(eb)) {
 			trace!("Removing event listener {:?} ({:?}).", name, options);
 			let callback = self.handler_handles.weak_decrement(callback).unwrap_throw().unwrap_throw();
@@ -872,9 +876,7 @@ impl DomDiffer {
 			}
 		}
 
-		if !c_1.dom_empty() || !c_2.dom_empty() {
-			todo!()
-		}
+		self.diff_splice_node_list(document, slice::from_ref(c_1), slice::from_ref(c_2), element, &element.child_nodes(), &mut 0, depth_limit - 1);
 
 		trace!("Updating element ({:?}) - end", mode);
 	}
