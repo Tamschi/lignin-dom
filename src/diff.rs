@@ -229,7 +229,12 @@ impl DomDiffer {
 						}
 					}
 
-					(lignin::Node::Multi(n_1), lignin::Node::Multi(n_2)) => self.diff_splice_node_list(document, n_1, n_2, parent_element, dom_slice, i, depth_limit - 1),
+					(lignin::Node::Multi(n_1), lignin::Node::Multi(n_2)) => {
+						// May skip `depth_limit` check one level down.
+						if !n_1.is_empty() || !n_2.is_empty() {
+							self.diff_splice_node_list(document, n_1, n_2, parent_element, dom_slice, i, depth_limit - 1)
+						}
+					}
 
 					(lignin::Node::Keyed(rf_1), lignin::Node::Keyed(rf_2)) => {
 						todo!("Diff `Keyed`")
@@ -416,7 +421,10 @@ impl DomDiffer {
 
 				lignin::Node::Multi(nodes) => {
 					trace!("Removing multi - start");
-					self.diff_splice_node_list(document, nodes, &[], parent_element, dom_slice, i, depth_limit - 1);
+					// May skip `depth_limit` check one level down.
+					if !nodes.is_empty() {
+						self.diff_splice_node_list(document, nodes, &[], parent_element, dom_slice, i, depth_limit - 1);
+					}
 					trace!("Removing multi - end");
 				}
 
@@ -625,7 +633,10 @@ impl DomDiffer {
 				}
 				lignin::Node::Multi(nodes) => {
 					trace!("Creating multi - start");
-					self.diff_splice_node_list(document, &[], nodes, parent_element, dom_slice, i, depth_limit - 1);
+					// May skip `depth_limit` check one level down.
+					if !nodes.is_empty() {
+						self.diff_splice_node_list(document, &[], nodes, parent_element, dom_slice, i, depth_limit - 1);
+					}
 					trace!("Creating multi - end");
 				}
 				lignin::Node::Keyed(reorderable_fragments) => {
