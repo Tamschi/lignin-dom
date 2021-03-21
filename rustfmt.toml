@@ -1,5 +1,5 @@
 hard_tabs = true
-max_width = 260
+max_width = 230
 newline_style = "Unix"
 use_field_init_shorthand = true
 use_try_shorthand = true

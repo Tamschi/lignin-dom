@@ -67,7 +67,10 @@ fn git_hub() {
 
 	version_sync::assert_contains_regex!(
 		"README.md",
-		&format!(r"^\[!\[GitHub\]\(https://img\.shields\.io/static/v1\?logo=GitHub&label=&message=%20&color=grey\)\]\(https://github\.com/{0}/{{name}}\)$", USER)
+		&format!(
+			r"^\[!\[GitHub\]\(https://img\.shields\.io/static/v1\?logo=GitHub&label=&message=%20&color=grey\)\]\(https://github\.com/{0}/{{name}}\)$",
+			USER,
+		)
 	);
 }
 
@@ -80,7 +83,10 @@ fn issues() {
 fn pulls() {
 	version_sync::assert_contains_regex!(
 		"README.md",
-		&format!(r"^\[!\[open pull requests\]\(https://img\.shields\.io/github/issues-pr-raw/{0}/{{name}}\)\]\(https://github\.com/{0}/{{name}}/pulls\)$", USER)
+		&format!(
+			r"^\[!\[open pull requests\]\(https://img\.shields\.io/github/issues-pr-raw/{0}/{{name}}\)\]\(https://github\.com/{0}/{{name}}/pulls\)$",
+			USER,
+		)
 	);
 }
 
