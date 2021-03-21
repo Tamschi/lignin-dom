@@ -35,7 +35,12 @@ impl DomDiffer {
 		}
 	}
 
-	fn create_listener_and_get_cached_add_event_listener_options(&mut self, callback_ref: CallbackRef<ThreadBound, fn(lignin::web::Event)>, options: &lignin::EventBindingOptions) -> (&Function, &web_sys::AddEventListenerOptions) {
+	#[allow(clippy::trivially_copy_pass_by_ref)]
+	fn get_or_create_listener_and_get_cached_add_event_listener_options(
+		&mut self,
+		callback_ref: CallbackRef<ThreadBound, fn(lignin::web::Event)>,
+		options: &lignin::EventBindingOptions,
+	) -> (&Function, &web_sys::AddEventListenerOptions) {
 		let common_handler = &self.common_handler;
 		let callback = self
 			.handler_handles
@@ -859,8 +864,12 @@ impl DomDiffer {
 			add_attribute(document, &attributes, added, mode)
 		}
 
-		//FIXME: This doesn't account for duplicate bindings yet!
-		for lignin::EventBinding { name, callback, options } in eb_1.iter().filter(|eb| !eb_2.contains(eb)) {
+		while eb_1.get(0) == eb_2.get(0) && !eb_1.is_empty() {
+			eb_1 = &eb_1[1..];
+			eb_2 = &eb_2[1..];
+		}
+
+		for &lignin::EventBinding { name, ref callback, options } in eb_1 {
 			trace!("Removing event listener {:?} ({:?}).", name, options);
 			let callback = self.handler_handles.weak_decrement(callback).unwrap_throw().unwrap_throw();
 			if let Err(error) = element.remove_event_listener_with_callback_and_bool(name, callback, options.capture()) {
@@ -868,9 +877,9 @@ impl DomDiffer {
 			}
 		}
 
-		for lignin::EventBinding { name, callback, ref options } in eb_2.iter().copied().filter(|eb| !eb_1.contains(eb)) {
+		for &lignin::EventBinding { name, callback, ref options } in eb_2 {
 			trace!("Adding event listener {:?} ({:?}).", name, options);
-			let (callback, options) = self.create_listener_and_get_cached_add_event_listener_options(callback, options);
+			let (callback, options) = self.get_or_create_listener_and_get_cached_add_event_listener_options(callback, options);
 			if let Err(error) = element.add_event_listener_with_callback_and_add_event_listener_options(name, callback, options) {
 				error!("Failed to remove event listener {:?}: {:?}", name, error)
 			}
