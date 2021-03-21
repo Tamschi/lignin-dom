@@ -851,24 +851,34 @@ impl DomDiffer {
 			}
 		}
 
-		let attributes = element.attributes();
-		while !a_1.is_empty() && !a_2.is_empty() {
-			todo!()
+		while !a_1.is_empty() && a_1.first() == a_2.first() {
+			a_1 = &a_1[1..];
+			a_2 = &a_2[1..];
+		}
+		while !a_1.is_empty() && a_1.last() == a_2.last() {
+			a_1 = &a_1[..a_1.len() - 1];
+			a_2 = &a_2[..a_2.len() - 1];
+		}
+		if !a_1.is_empty() || !a_2.is_empty() {
+			let attributes = element.attributes();
+			for removed in a_1 {
+				remove_attribute(&attributes, removed, mode)
+			}
+
+			for added in a_2 {
+				add_attribute(document, &attributes, added, mode)
+			}
 		}
 
-		for removed in a_1 {
-			remove_attribute(&attributes, removed, mode)
-		}
-
-		for added in a_2 {
-			add_attribute(document, &attributes, added, mode)
-		}
-
-		while eb_1.get(0) == eb_2.get(0) && !eb_1.is_empty() {
+		while !eb_1.is_empty() && eb_1.first() == eb_2.first() {
 			eb_1 = &eb_1[1..];
 			eb_2 = &eb_2[1..];
 		}
-
+		while !eb_1.is_empty() && eb_1.last() == eb_2.last() {
+			eb_1 = &eb_1[..eb_1.len() - 1];
+			eb_2 = &eb_2[..eb_2.len() - 1];
+		}
+		//FIXME: This resets ***once*** bindings if they're sandwiched between modified bindings.
 		for &lignin::EventBinding { name, ref callback, options } in eb_1 {
 			trace!("Removing event listener {:?} ({:?}).", name, options);
 			let callback = self.handler_handles.weak_decrement(callback).unwrap_throw().unwrap_throw();
@@ -876,12 +886,11 @@ impl DomDiffer {
 				error!("Failed to remove event listener {:?} ({:?}): {:?}", name, options, error)
 			}
 		}
-
 		for &lignin::EventBinding { name, callback, ref options } in eb_2 {
 			trace!("Adding event listener {:?} ({:?}).", name, options);
 			let (callback, options) = self.get_or_create_listener_and_get_cached_add_event_listener_options(callback, options);
 			if let Err(error) = element.add_event_listener_with_callback_and_add_event_listener_options(name, callback, options) {
-				error!("Failed to remove event listener {:?}: {:?}", name, error)
+				error!("Failed to add event listener {:?}: {:?}", name, error)
 			}
 		}
 
