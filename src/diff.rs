@@ -920,8 +920,8 @@ impl DomDiffer {
 				self.add_event_listener(element, added)
 			}
 		} else if eb_2.is_empty() {
-			for &removed in eb_1 {
-				self.remove_event_listener(element, &removed)
+			for removed in eb_1 {
+				self.remove_event_listener(element, removed)
 			}
 		} else {
 			let event_diff = self.event_binding_diff_set.temp();
@@ -933,7 +933,7 @@ impl DomDiffer {
 				event_diff.insert(*persisting);
 			}
 			for removed in eb_1 {
-				if !event_diff.remove(&removed) {
+				if !event_diff.remove(removed) {
 					self.remove_event_listener(element, removed);
 				}
 			}
