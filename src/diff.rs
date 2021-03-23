@@ -171,7 +171,7 @@ impl DomDiffer {
 
 						let _guard = loosen_binding(db_1, db_2, html_element.into());
 
-						self.update_element(document, e_1, e_2, html_element, ElementMode::HtmlOrCustom, depth_limit)
+						self.update_element(document, e_1, e_2, html_element, depth_limit)
 					}
 
 					(lignin::Node::MathMlElement { element: e_1, dom_binding: db_1 }, lignin::Node::MathMlElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name && e_1.creation_options == e_2.creation_options => {
@@ -202,7 +202,7 @@ impl DomDiffer {
 
 						let _guard = loosen_binding(db_1, db_2, element.into());
 
-						self.update_element(document, e_1, e_2, element, ElementMode::MathMl, depth_limit)
+						self.update_element(document, e_1, e_2, element, depth_limit)
 					}
 
 					(lignin::Node::SvgElement { element: e_1, dom_binding: db_1 }, lignin::Node::SvgElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name && e_1.creation_options == e_2.creation_options => {
@@ -233,7 +233,7 @@ impl DomDiffer {
 
 						let _guard = loosen_binding(db_1, db_2, svg_element.into());
 
-						self.update_element(document, e_1, e_2, svg_element, ElementMode::Svg, depth_limit)
+						self.update_element(document, e_1, e_2, svg_element, depth_limit)
 					}
 
 					(lignin::Node::Memoized { state_key: sk_1, content: c_1 }, lignin::Node::Memoized { state_key: sk_2, content: c_2 }) => {
@@ -545,7 +545,6 @@ impl DomDiffer {
 						},
 						element,
 						&dom_element,
-						ElementMode::HtmlOrCustom,
 						depth_limit,
 					);
 
@@ -588,7 +587,6 @@ impl DomDiffer {
 						},
 						element,
 						&dom_element,
-						ElementMode::MathMl,
 						depth_limit,
 					);
 
@@ -631,7 +629,6 @@ impl DomDiffer {
 						},
 						element,
 						&dom_element,
-						ElementMode::Svg,
 						depth_limit,
 					);
 
@@ -839,15 +836,14 @@ impl DomDiffer {
 			event_bindings: mut eb_2,
 		}: &lignin::Element<ThreadBound>,
 		element: &web_sys::Element,
-		mode: ElementMode,
 		depth_limit: usize,
 	) {
-		trace!("Updating element ({:?}) - start", mode);
+		trace!("Updating element - start");
 
 		debug_assert_eq!(n_1, n_2);
 		debug_assert_eq!(co_1, co_2);
 
-		fn remove_attribute(attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute, mode: ElementMode) {
+		fn remove_attribute(attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute) {
 			trace!("Removing attribute {:?}={:?}.", name, value);
 			match attributes.remove_named_item(name) {
 				Err(error) => warn!("Could not remove attribute with name {:?}, value {:?}: {:?}", name, value, error),
@@ -859,7 +855,7 @@ impl DomDiffer {
 			}
 		}
 
-		fn add_attribute(document: &web_sys::Document, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute, mode: ElementMode) {
+		fn add_attribute(document: &web_sys::Document, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute) {
 			trace!("Adding attribute {:?}={:?}.", name, value);
 			let attribute = match document.create_attribute(name) {
 				Ok(attribute) => attribute,
@@ -886,11 +882,11 @@ impl DomDiffer {
 		if !a_1.is_empty() || !a_2.is_empty() {
 			let attributes = element.attributes();
 			for removed in a_1 {
-				remove_attribute(&attributes, removed, mode)
+				remove_attribute(&attributes, removed)
 			}
 
 			for added in a_2 {
-				add_attribute(document, &attributes, added, mode)
+				add_attribute(document, &attributes, added)
 			}
 		}
 
@@ -944,7 +940,7 @@ impl DomDiffer {
 
 		self.diff_splice_node_list(document, slice::from_ref(c_1), slice::from_ref(c_2), element, &element.child_nodes(), &mut 0, depth_limit - 1);
 
-		trace!("Updating element ({:?}) - end", mode);
+		trace!("Updating element - end");
 	}
 
 	fn add_event_listener(&mut self, element: &web_sys::Element, lignin::EventBinding { name, callback, options }: lignin::EventBinding<ThreadBound>) {
@@ -966,14 +962,6 @@ impl DomDiffer {
 			error!("Failed to remove event listener {:?} ({:?}): {:?}", name, options, error)
 		}
 	}
-}
-
-/// Controls how certain attributes are namespaced.
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum ElementMode {
-	HtmlOrCustom,
-	MathMl,
-	Svg,
 }
 
 #[allow(clippy::type_complexity)]
