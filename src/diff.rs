@@ -5,7 +5,7 @@ use crate::{
 use core::{any::type_name, slice};
 use hashbrown::HashSet;
 use js_sys::Function;
-use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, EventBinding, ThreadBound};
+use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, EventBinding, ReorderableFragment, ThreadBound};
 use log::{
 	error, info, log_enabled, trace, warn,
 	Level::{Error, Warn},
@@ -249,8 +249,33 @@ impl DomDiffer {
 						}
 					}
 
-					(lignin::Node::Keyed(rf_1), lignin::Node::Keyed(rf_2)) => {
-						todo!("Diff `Keyed`")
+					(lignin::Node::Keyed(mut rf_1), lignin::Node::Keyed(mut rf_2)) => {
+						while !rf_1.is_empty() {
+							let &ReorderableFragment { dom_key: dk_1, content: ref c_1 } = rf_1.get(0).unwrap_throw();
+
+							if let Some(&ReorderableFragment { dom_key: dk_2, content: ref c_2 }) = rf_2.first() {
+								if dk_1 == dk_2 {
+									self.diff_splice_node_list(document, slice::from_ref(c_1), slice::from_ref(c_2), parent_element, dom_slice, i, depth_limit - 1);
+									rf_1 = &rf_1[1..];
+									rf_2 = &rf_2[1..];
+									continue;
+								}
+							}
+
+							break;
+						}
+
+						if rf_1.is_empty() {
+							for ReorderableFragment { dom_key: _, content } in rf_2 {
+								self.diff_splice_node_list(document, &[], slice::from_ref(content), parent_element, dom_slice, i, depth_limit - 1)
+							}
+						} else if rf_2.is_empty() {
+							for ReorderableFragment { dom_key: _, content } in rf_1 {
+								self.diff_splice_node_list(document, slice::from_ref(content), &[], parent_element, dom_slice, i, depth_limit - 1)
+							}
+						} else {
+							todo!("Diff `Keyed` (changed tail)")
+						}
 					}
 
 					(lignin::Node::Text { text: t_1, dom_binding: db_1 }, lignin::Node::Text { text: t_2, dom_binding: db_2 }) => {
