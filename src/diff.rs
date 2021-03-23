@@ -932,9 +932,9 @@ impl DomDiffer {
 			for persisting in eb_2 {
 				event_diff.insert(*persisting);
 			}
-			for removed in eb_1 {
-				if !event_diff.remove(removed) {
-					self.remove_event_listener(element, removed);
+			for prior in eb_1 {
+				if !event_diff.remove(prior) {
+					self.remove_event_listener(element, prior);
 				}
 			}
 			for added in event_diff.drain() {
