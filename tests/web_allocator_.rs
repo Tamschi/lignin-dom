@@ -7,6 +7,6 @@ impl load::Allocator<'static> for Allocator {
 	}
 
 	fn allocate_slice<T>(&self, iter: &mut dyn ExactSizeIterator<Item = T>) -> &'static [T] {
-		iter.collect::<Vec<_>>().leak()
+		Box::leak(Box::new(iter.collect::<Vec<_>>())).as_slice()
 	}
 }

@@ -23,11 +23,13 @@ impl<T, NextAt: FnMut(usize) -> T> Iterator for SliceGenerator<T, NextAt> {
 	type Item = T;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		(self.counter < self.len).then(|| {
+		if self.counter < self.len {
 			let i = self.counter;
 			self.counter = i + 1;
-			(self.next_at)(i)
-		})
+			Some((self.next_at)(i))
+		} else {
+			None
+		}
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
