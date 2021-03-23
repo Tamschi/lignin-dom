@@ -1,7 +1,11 @@
-use crate::rc_hash_map::{self, RcHashMap};
+use crate::{
+	rc_hash_map::{self, RcHashMap},
+	temp_set::TempEventBindingSet,
+};
 use core::{any::type_name, slice};
+use hashbrown::HashSet;
 use js_sys::Function;
-use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, ThreadBound};
+use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, EventBinding, ThreadBound};
 use log::{
 	error, info, log_enabled, trace, warn,
 	Level::{Error, Warn},
@@ -14,6 +18,7 @@ pub struct DomDiffer {
 	common_handler: Closure<dyn Fn(JsValue, web_sys::Event)>,
 	element: web_sys::Element,
 	event_listener_options_cache: [Option<web_sys::AddEventListenerOptions>; 8],
+	event_binding_diff_set: TempEventBindingSet,
 }
 impl DomDiffer {
 	#[must_use]
@@ -32,37 +37,33 @@ impl DomDiffer {
 			})),
 			element,
 			event_listener_options_cache: [None, None, None, None, None, None, None, None],
+			event_binding_diff_set: TempEventBindingSet::new(),
 		}
 	}
 
-	#[allow(clippy::trivially_copy_pass_by_ref)]
-	fn get_or_create_listener_and_get_cached_add_event_listener_options(
-		&mut self,
+	#[allow(clippy::type_complexity)]
+	fn get_or_create_listener<'a>(
+		common_handler: &Closure<dyn Fn(JsValue, web_sys::Event)>,
+		handler_handles: &'a mut RcHashMap<CallbackRef<ThreadBound, fn(lignin::web::Event)>, u16, Function>,
 		callback_ref: CallbackRef<ThreadBound, fn(lignin::web::Event)>,
-		options: &lignin::EventBindingOptions,
-	) -> (&Function, &web_sys::AddEventListenerOptions) {
-		let common_handler = &self.common_handler;
-		let callback = self
-			.handler_handles
+	) -> &'a Function {
+		handler_handles
 			.increment_or_insert_with(callback_ref, |callback_ref| common_handler.as_ref().unchecked_ref::<Function>().bind1(&JsValue::UNDEFINED, &callback_ref.into_js()))
-			.expect_throw("Too many (more than 65k) active references to the same `CallbackRef`");
+			.expect_throw("Too many (more than 65k) active references to the same `CallbackRef`")
+	}
 
-		let options = {
-			let entry = self
-				.event_listener_options_cache
-				.get_mut(options.capture() as usize + options.once() as usize * 2 + options.passive() as usize * 4)
-				.unwrap_throw();
+	fn get_cached_add_event_listener_options(event_listener_options_cache: &mut [Option<web_sys::AddEventListenerOptions>; 8], options: lignin::EventBindingOptions) -> &web_sys::AddEventListenerOptions {
+		let entry = event_listener_options_cache
+			.get_mut(options.capture() as usize + options.once() as usize * 2 + options.passive() as usize * 4)
+			.unwrap_throw();
 
-			if entry.is_none() {
-				let mut web_options = web_sys::AddEventListenerOptions::new();
-				web_options.capture(options.capture()).once(options.once()).passive(options.passive());
-				*entry = Some(web_options)
-			}
+		if entry.is_none() {
+			let mut web_options = web_sys::AddEventListenerOptions::new();
+			web_options.capture(options.capture()).once(options.once()).passive(options.passive());
+			*entry = Some(web_options)
+		}
 
-			entry.as_ref().unwrap_throw()
-		};
-
-		(callback, options)
+		entry.as_ref().unwrap_throw()
 	}
 
 	pub fn update_child_nodes(&mut self, vdom_a: &[lignin::Node<'_, ThreadBound>], vdom_b: &[lignin::Node<'_, ThreadBound>], depth_limit: usize) {
@@ -76,6 +77,14 @@ impl DomDiffer {
 			trace!("Freed {} event listener(s).", drain.count());
 		}
 		info!("Event listener count/cached capacity: {}/{}", self.handler_handles.len(), self.handler_handles.capacity());
+		info!("Diff heap capacity (event bindings): {}", self.event_binding_diff_set.capacity());
+		if log_enabled!(Warn) && self.event_binding_diff_set.capacity() >= 100 {
+			warn!(
+				"The event binding diff heap capacity is large ({}).\n\
+				This may point to inefficient (unstably ordered) use of event bindings.",
+				self.event_binding_diff_set.capacity()
+			)
+		}
 		//TODO: Log/warn heap cache metrics.
 	}
 
@@ -281,7 +290,7 @@ impl DomDiffer {
 					(ref n_1, ref n_2) => {
 						trace!("Replace mismatching");
 
-						if cfg!(debug_assertions) && log::STATIC_MAX_LEVEL >= log::Level::Warn {
+						if log_enabled!(Warn) {
 							if let (&lignin::Node::HtmlElement { element: e_1, .. }, &lignin::Node::HtmlElement { element: e_2, .. })
 							| (&lignin::Node::SvgElement { element: e_1, .. }, &lignin::Node::SvgElement { element: e_2, .. }) = (n_1, n_2)
 							{
@@ -885,6 +894,18 @@ impl DomDiffer {
 			}
 		}
 
+		if log_enabled!(Error) {
+			for (i_a, eb_a) in eb_2.iter().enumerate() {
+				for (i_b, eb_b) in eb_2.iter().enumerate() {
+					if i_a != i_b && eb_a == eb_b {
+						// See <https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener#multiple_identical_event_listeners>.
+						// Disambiguating duplicates would be expensive, so they aren't supported.
+						throw_str(&format!("Duplicate event binding: {:#?}", eb_2))
+					}
+				}
+			}
+		}
+
 		while !eb_1.is_empty() && eb_1.first() == eb_2.first() {
 			eb_1 = &eb_1[1..];
 			eb_2 = &eb_2[1..];
@@ -893,25 +914,57 @@ impl DomDiffer {
 			eb_1 = &eb_1[..eb_1.len() - 1];
 			eb_2 = &eb_2[..eb_2.len() - 1];
 		}
-		//FIXME: This resets ***once*** bindings if they're sandwiched between modified bindings.
-		for &lignin::EventBinding { name, ref callback, options } in eb_1 {
-			trace!("Removing event listener {:?} ({:?}).", name, options);
-			let callback = self.handler_handles.weak_decrement(callback).unwrap_throw().unwrap_throw();
-			if let Err(error) = element.remove_event_listener_with_callback_and_bool(name, callback, options.capture()) {
-				error!("Failed to remove event listener {:?} ({:?}): {:?}", name, options, error)
+
+		if eb_1.is_empty() {
+			for &added in eb_2 {
+				self.add_event_listener(element, added)
 			}
-		}
-		for &lignin::EventBinding { name, callback, ref options } in eb_2 {
-			trace!("Adding event listener {:?} ({:?}).", name, options);
-			let (callback, options) = self.get_or_create_listener_and_get_cached_add_event_listener_options(callback, options);
-			if let Err(error) = element.add_event_listener_with_callback_and_add_event_listener_options(name, callback, options) {
-				error!("Failed to add event listener {:?}: {:?}", name, error)
+		} else if eb_2.is_empty() {
+			for &removed in eb_1 {
+				self.remove_event_listener(element, &removed)
+			}
+		} else {
+			let event_diff = self.event_binding_diff_set.temp();
+			let event_diff: &mut HashSet<EventBinding<ThreadBound>> = unsafe {
+				//SAFETY: This field is not otherwise accessed in this block.
+				&mut *(event_diff as *mut _)
+			};
+			for persisting in eb_2 {
+				event_diff.insert(*persisting);
+			}
+			for removed in eb_1 {
+				if !event_diff.remove(&removed) {
+					self.remove_event_listener(element, removed);
+				}
+			}
+			for added in event_diff.drain() {
+				self.add_event_listener(element, added);
 			}
 		}
 
 		self.diff_splice_node_list(document, slice::from_ref(c_1), slice::from_ref(c_2), element, &element.child_nodes(), &mut 0, depth_limit - 1);
 
 		trace!("Updating element ({:?}) - end", mode);
+	}
+
+	fn add_event_listener(&mut self, element: &web_sys::Element, lignin::EventBinding { name, callback, options }: lignin::EventBinding<ThreadBound>) {
+		trace!("Adding event listener {:?} ({:?}).", name, options);
+		if let Err(error) = element.add_event_listener_with_callback_and_add_event_listener_options(
+			name,
+			Self::get_or_create_listener(&self.common_handler, &mut self.handler_handles, callback),
+			Self::get_cached_add_event_listener_options(&mut self.event_listener_options_cache, options),
+		) {
+			error!("Failed to add event listener {:?}: {:?}", name, error)
+		}
+	}
+
+	fn remove_event_listener(&mut self, element: &web_sys::Element, removed: &lignin::EventBinding<ThreadBound>) {
+		let &lignin::EventBinding { name, ref callback, options } = removed;
+		trace!("Removing event listener {:?} ({:?}).", name, options);
+		let callback = self.handler_handles.weak_decrement(callback).unwrap_throw().unwrap_throw();
+		if let Err(error) = element.remove_event_listener_with_callback_and_bool(name, callback, options.capture()) {
+			error!("Failed to remove event listener {:?} ({:?}): {:?}", name, options, error)
+		}
 	}
 }
 

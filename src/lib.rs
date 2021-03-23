@@ -8,6 +8,7 @@ pub mod readme {
 }
 
 mod rc_hash_map;
+mod temp_set;
 
 pub mod diff;
 pub mod load;
