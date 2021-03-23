@@ -28,6 +28,10 @@ is-it-maintained-open-issues = { repository = "Tamschi/lignin-dom" }
 maintenance = { status = "experimental" }
 
 [features]
+#TODO (CURRENTLY EFFECTIVELY ALWAYS ON): More detailed logging, which may contain personally identifiable information from the current or expected page content.
+# Without this feature, warning and error messages are limited to less specific technical information, but higher log levels (especially `Trace`) may still leak personal data!
+dangerous-logging = []
+
 log-paths = [] #TODO: Log VDOM paths in error messages, which is expensive.
 
 [dependencies]
