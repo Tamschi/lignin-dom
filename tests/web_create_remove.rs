@@ -168,6 +168,7 @@ static mut LOG_INITIALIZED: bool = false;
 fn test_create<'a, T>(vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>) -> Node<'a, ThreadBound>, depth_limit: usize, binding_count: isize) {
 	unsafe {
 		if !LOG_INITIALIZED {
+			//TODO: Fail on Warnig or Error.
 			console_log::init_with_level(Level::Trace).unwrap();
 			LOG_INITIALIZED = true;
 		}
