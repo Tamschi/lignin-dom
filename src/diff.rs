@@ -107,7 +107,6 @@ impl DomDiffer {
 
 		#[allow(clippy::never_loop)] // Inner `loop`.
 		while !vdom_a.is_empty() && !vdom_b.is_empty() {
-			// `next_sibling` variable.
 			*i += 'vdom_item: loop {
 				break 'vdom_item match (vdom_a[0], vdom_b[0]) {
 					(lignin::Node::Comment { comment: c_1, dom_binding: db_1 }, lignin::Node::Comment { comment: c_2, dom_binding: db_2 }) => {
@@ -360,7 +359,6 @@ impl DomDiffer {
 
 		let mut vdom_a = vdom_a.iter();
 		for removed_node in vdom_a.by_ref() {
-			// `next_sibling` always unused.
 			self.decrement_handlers(removed_node, depth_limit);
 
 			macro_rules! remove_element {
@@ -541,8 +539,7 @@ impl DomDiffer {
 		let next_sibling = dom_slice.get(*i);
 		let next_sibling = next_sibling.as_ref();
 		for new_node in vdom_b {
-			// `next_sibling` always inherited.
-			match *new_node {
+			*i += match *new_node {
 				lignin::Node::Comment { comment, dom_binding } => {
 					trace!("Creating comment.");
 					let dom_comment = document.create_comment(comment);
@@ -553,6 +550,7 @@ impl DomDiffer {
 					if let Some(dom_binding) = dom_binding {
 						dom_binding.call(DomRef::Added(&dom_comment.into()))
 					}
+					1
 				}
 
 				lignin::Node::HtmlElement { element, dom_binding } => {
@@ -595,6 +593,7 @@ impl DomDiffer {
 					if let Some(dom_binding) = dom_binding {
 						dom_binding.call(DomRef::Added(&dom_element.into()))
 					}
+					1
 				}
 
 				lignin::Node::MathMlElement { element, dom_binding } => {
@@ -637,6 +636,7 @@ impl DomDiffer {
 					if let Some(dom_binding) = dom_binding {
 						dom_binding.call(DomRef::Added(&dom_element.into()))
 					}
+					1
 				}
 
 				lignin::Node::SvgElement { element, dom_binding } => {
@@ -679,11 +679,13 @@ impl DomDiffer {
 					if let Some(dom_binding) = dom_binding {
 						dom_binding.call(DomRef::Added(&dom_element.into()))
 					}
+					1
 				}
 
 				lignin::Node::Memoized { state_key, content } => {
 					trace!("Creating memoized {:?}:", state_key);
 					self.diff_splice_node_list(document, &[], slice::from_ref(content), parent_element, dom_slice, i, depth_limit - 1);
+					0
 				}
 				lignin::Node::Multi(nodes) => {
 					trace!("Creating multi - start");
@@ -692,6 +694,7 @@ impl DomDiffer {
 						self.diff_splice_node_list(document, &[], nodes, parent_element, dom_slice, i, depth_limit - 1);
 					}
 					trace!("Creating multi - end");
+					0
 				}
 				lignin::Node::Keyed(reorderable_fragments) => {
 					trace!("Creating keyed - start");
@@ -700,6 +703,7 @@ impl DomDiffer {
 						self.diff_splice_node_list(document, &[], slice::from_ref(&reorderable_fragment.content), parent_element, dom_slice, i, depth_limit - 1)
 					}
 					trace!("Creating keyed - end");
+					0
 				}
 
 				lignin::Node::Text { text, dom_binding } => {
@@ -712,13 +716,13 @@ impl DomDiffer {
 					if let Some(dom_binding) = dom_binding {
 						dom_binding.call(DomRef::Added(&dom_text.into()))
 					}
+					1
 				}
 
 				lignin::Node::RemnantSite(_) => {
 					todo!("Create `RemnantSite`")
 				}
-			}
-			*i += 1;
+			};
 		}
 	}
 
