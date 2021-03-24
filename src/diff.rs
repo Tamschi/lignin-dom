@@ -105,12 +105,13 @@ impl DomDiffer {
 			return error!("Depth limit reached");
 		}
 
+		#[allow(clippy::never_loop)] // Inner `loop`.
 		while !vdom_a.is_empty() && !vdom_b.is_empty() {
 			// `next_sibling` variable.
-			#[allow(clippy::never_loop)]
-			'vdom_item: loop {
+			*i += 'vdom_item: loop {
 				break 'vdom_item match (vdom_a[0], vdom_b[0]) {
 					(lignin::Node::Comment { comment: c_1, dom_binding: db_1 }, lignin::Node::Comment { comment: c_2, dom_binding: db_2 }) => {
+						trace!("Diffing comment.");
 						let node = match dom_slice.get(*i) {
 							Some(node) => node,
 							None => {
@@ -126,7 +127,7 @@ impl DomDiffer {
 								error!("Expected to update `web_sys::Comment` but found {:?}; Recreating the node.", node);
 								self.diff_splice_node_list(document, &[lignin::Node::Comment { comment: c_1, dom_binding: db_1 }], &[], parent_element, dom_slice, i, depth_limit);
 								self.diff_splice_node_list(document, &[], &[lignin::Node::Comment { comment: c_2, dom_binding: db_2 }], parent_element, dom_slice, i, depth_limit);
-								break 'vdom_item;
+								break 'vdom_item 0;
 							}
 						};
 
@@ -141,9 +142,11 @@ impl DomDiffer {
 						if c_1 != c_2 {
 							comment.set_data(c_2)
 						}
+						1
 					}
 
 					(lignin::Node::HtmlElement { element: e_1, dom_binding: db_1 }, lignin::Node::HtmlElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name && e_1.creation_options == e_2.creation_options => {
+						trace!("Diffing HTML element:");
 						let node = match dom_slice.get(*i) {
 							Some(node) => node,
 							None => {
@@ -159,22 +162,24 @@ impl DomDiffer {
 								error!("Expected to update `web_sys::HtmlElement` but found {:?}; Recreating the node.", node);
 								self.diff_splice_node_list(document, &[lignin::Node::HtmlElement { element: e_1, dom_binding: db_1 }], &[], parent_element, dom_slice, i, depth_limit);
 								self.diff_splice_node_list(document, &[], &[lignin::Node::HtmlElement { element: e_2, dom_binding: db_2 }], parent_element, dom_slice, i, depth_limit);
-								break 'vdom_item;
+								break 'vdom_item 0;
 							}
 						};
 
 						if html_element.tag_name() != e_1.name {
 							error!("Expected to update <{}> but found <{}>; Recreating the HTML element.", e_1.name, html_element.tag_name());
 							self.diff_splice_node_list(document, &[lignin::Node::HtmlElement { element: e_1, dom_binding: db_1 }], &[], parent_element, dom_slice, i, depth_limit);
-							self.diff_splice_node_list(document, &[], &[lignin::Node::HtmlElement { element: e_2, dom_binding: db_2 }], parent_element, dom_slice, i, depth_limit);
+							self.diff_splice_node_list(document, &[], &[lignin::Node::HtmlElement { element: e_2, dom_binding: db_2 }], parent_element, dom_slice, &mut *i, depth_limit);
 						}
 
 						let _guard = loosen_binding(db_1, db_2, html_element.into());
 
-						self.update_element(document, e_1, e_2, html_element, depth_limit)
+						self.update_element(document, e_1, e_2, html_element, depth_limit);
+						1
 					}
 
 					(lignin::Node::MathMlElement { element: e_1, dom_binding: db_1 }, lignin::Node::MathMlElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name && e_1.creation_options == e_2.creation_options => {
+						trace!("Diffing MathML element:");
 						let node = match dom_slice.get(*i) {
 							Some(node) => node,
 							None => {
@@ -190,22 +195,24 @@ impl DomDiffer {
 								error!("Expected to update `web_sys::Element` but found {:?}; Recreating the node.", node);
 								self.diff_splice_node_list(document, &[lignin::Node::MathMlElement { element: e_1, dom_binding: db_1 }], &[], parent_element, dom_slice, i, depth_limit);
 								self.diff_splice_node_list(document, &[], &[lignin::Node::MathMlElement { element: e_2, dom_binding: db_2 }], parent_element, dom_slice, i, depth_limit);
-								break 'vdom_item;
+								break 'vdom_item 0;
 							}
 						};
 
 						if element.tag_name() != e_1.name {
 							error!("Expected to update <{}> but found <{}>; Recreating the MathML element.", e_1.name, element.tag_name());
 							self.diff_splice_node_list(document, &[lignin::Node::MathMlElement { element: e_1, dom_binding: db_1 }], &[], parent_element, dom_slice, i, depth_limit);
-							self.diff_splice_node_list(document, &[], &[lignin::Node::MathMlElement { element: e_2, dom_binding: db_2 }], parent_element, dom_slice, i, depth_limit);
+							self.diff_splice_node_list(document, &[], &[lignin::Node::MathMlElement { element: e_2, dom_binding: db_2 }], parent_element, dom_slice, &mut *i, depth_limit);
 						}
 
 						let _guard = loosen_binding(db_1, db_2, element.into());
 
-						self.update_element(document, e_1, e_2, element, depth_limit)
+						self.update_element(document, e_1, e_2, element, depth_limit);
+						1
 					}
 
 					(lignin::Node::SvgElement { element: e_1, dom_binding: db_1 }, lignin::Node::SvgElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name && e_1.creation_options == e_2.creation_options => {
+						trace!("Diffing SVG element:");
 						let node = match dom_slice.get(*i) {
 							Some(node) => node,
 							None => {
@@ -221,35 +228,42 @@ impl DomDiffer {
 								error!("Expected to update `web_sys::SvgElement` but found {:?}; Recreating the node.", node);
 								self.diff_splice_node_list(document, &[lignin::Node::SvgElement { element: e_1, dom_binding: db_1 }], &[], parent_element, dom_slice, i, depth_limit);
 								self.diff_splice_node_list(document, &[], &[lignin::Node::SvgElement { element: e_2, dom_binding: db_2 }], parent_element, dom_slice, i, depth_limit);
-								break 'vdom_item;
+								break 'vdom_item 0;
 							}
 						};
 
 						if svg_element.tag_name() != e_1.name {
 							error!("Expected to update <{}> but found <{}>; Recreating the SVG element.", e_1.name, svg_element.tag_name());
 							self.diff_splice_node_list(document, &[lignin::Node::SvgElement { element: e_1, dom_binding: db_1 }], &[], parent_element, dom_slice, i, depth_limit);
-							self.diff_splice_node_list(document, &[], &[lignin::Node::SvgElement { element: e_2, dom_binding: db_2 }], parent_element, dom_slice, i, depth_limit);
+							self.diff_splice_node_list(document, &[], &[lignin::Node::SvgElement { element: e_2, dom_binding: db_2 }], parent_element, dom_slice, &mut *i, depth_limit);
 						}
 
 						let _guard = loosen_binding(db_1, db_2, svg_element.into());
 
-						self.update_element(document, e_1, e_2, svg_element, depth_limit)
+						self.update_element(document, e_1, e_2, svg_element, depth_limit);
+						1
 					}
 
 					(lignin::Node::Memoized { state_key: sk_1, content: c_1 }, lignin::Node::Memoized { state_key: sk_2, content: c_2 }) => {
+						trace!("Diffing memoized:");
 						if sk_1 != sk_2 {
 							self.diff_splice_node_list(document, slice::from_ref(c_1), slice::from_ref(c_2), parent_element, dom_slice, i, depth_limit - 1)
 						}
+						0
 					}
 
 					(lignin::Node::Multi(n_1), lignin::Node::Multi(n_2)) => {
+						trace!("Diffing multi - start");
 						// May skip `depth_limit` check one level down.
 						if !n_1.is_empty() || !n_2.is_empty() {
 							self.diff_splice_node_list(document, n_1, n_2, parent_element, dom_slice, i, depth_limit - 1)
 						}
+						trace!("Diffing multi - end");
+						0
 					}
 
 					(lignin::Node::Keyed(mut rf_1), lignin::Node::Keyed(mut rf_2)) => {
+						trace!("Diffing keyed - start");
 						while !rf_1.is_empty() {
 							let &ReorderableFragment { dom_key: dk_1, content: ref c_1 } = rf_1.get(0).unwrap_throw();
 
@@ -276,9 +290,12 @@ impl DomDiffer {
 						} else {
 							todo!("Diff `Keyed` (changed tail)")
 						}
+						trace!("Diffing keyed - end");
+						0
 					}
 
 					(lignin::Node::Text { text: t_1, dom_binding: db_1 }, lignin::Node::Text { text: t_2, dom_binding: db_2 }) => {
+						trace!("Diffing text node.");
 						let node = match dom_slice.get(*i) {
 							Some(node) => node,
 							None => {
@@ -294,7 +311,7 @@ impl DomDiffer {
 								error!("Expected to update `web_sys::Text` but found {:?}; Recreating the node.", node);
 								self.diff_splice_node_list(document, &[lignin::Node::Text { text: t_1, dom_binding: db_1 }], &[], parent_element, dom_slice, i, depth_limit);
 								self.diff_splice_node_list(document, &[], &[lignin::Node::Text { text: t_2, dom_binding: db_2 }], parent_element, dom_slice, i, depth_limit);
-								break 'vdom_item;
+								break 'vdom_item 0;
 							}
 						};
 
@@ -305,6 +322,7 @@ impl DomDiffer {
 						} else if t_1 != t_2 {
 							text.set_data(t_2)
 						}
+						1
 					}
 
 					(lignin::Node::RemnantSite(_), lignin::Node::RemnantSite(_)) => {
@@ -331,9 +349,10 @@ impl DomDiffer {
 
 						self.diff_splice_node_list(document, slice::from_ref(n_1), &[], parent_element, dom_slice, i, depth_limit);
 						self.diff_splice_node_list(document, &[], slice::from_ref(n_2), parent_element, dom_slice, i, depth_limit);
+						0
 					}
 				};
-			}
+			};
 
 			vdom_a = &vdom_a[1..];
 			vdom_b = &vdom_b[1..];

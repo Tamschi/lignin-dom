@@ -13,7 +13,7 @@ use web_allocator_::Allocator;
 
 #[wasm_bindgen_test]
 fn comment() {
-	test_create(
+	test_create_diff_identical_remove(
 		|dom_binding| Node::Comment {
 			comment: "Hello lignin-dom comment!",
 			dom_binding,
@@ -25,7 +25,7 @@ fn comment() {
 
 #[wasm_bindgen_test]
 fn text() {
-	test_create(
+	test_create_diff_identical_remove(
 		|dom_binding| Node::Text {
 			text: "Hello lignin-dom text!",
 			dom_binding,
@@ -37,7 +37,7 @@ fn text() {
 
 #[wasm_bindgen_test]
 fn multi() {
-	test_create(
+	test_create_diff_identical_remove(
 		|dom_binding| {
 			Node::Multi(Allocator.allocate([
 				Node::Text { text: "Hello lignin-dom", dom_binding },
@@ -52,7 +52,7 @@ fn multi() {
 
 #[wasm_bindgen_test]
 fn keyed() {
-	test_create(
+	test_create_diff_identical_remove(
 		|dom_binding| {
 			Node::Keyed(Allocator.allocate([
 				ReorderableFragment {
@@ -76,7 +76,7 @@ fn keyed() {
 
 #[wasm_bindgen_test]
 fn memoized() {
-	test_create(
+	test_create_diff_identical_remove(
 		|dom_binding| Node::Memoized {
 			state_key: 0,
 			content: Allocator.allocate(Node::Text { text: "Hello memoized!", dom_binding }),
@@ -88,7 +88,7 @@ fn memoized() {
 
 #[wasm_bindgen_test]
 fn minimal_div() {
-	test_create(
+	test_create_diff_identical_remove(
 		|dom_binding| Node::HtmlElement {
 			element: Allocator.allocate(Element {
 				name: "DIV",
@@ -107,7 +107,7 @@ fn minimal_div() {
 #[wasm_bindgen_test]
 fn clickable_div() {
 	let clicked = CallbackRegistration::<_, fn(Event)>::new(Box::pin(()).as_ref(), |_, _| ());
-	test_create(
+	test_create_diff_identical_remove(
 		|dom_binding| Node::HtmlElement {
 			element: Allocator.allocate(Element {
 				name: "DIV",
@@ -129,7 +129,7 @@ fn clickable_div() {
 
 #[wasm_bindgen_test]
 fn minimal_math() {
-	test_create(
+	test_create_diff_identical_remove(
 		|dom_binding| Node::MathMlElement {
 			element: Allocator.allocate(Element {
 				name: "math",
@@ -147,7 +147,7 @@ fn minimal_math() {
 
 #[wasm_bindgen_test]
 fn minimal_svg() {
-	test_create(
+	test_create_diff_identical_remove(
 		|dom_binding| Node::SvgElement {
 			element: Allocator.allocate(Element {
 				name: "svg",
@@ -165,7 +165,7 @@ fn minimal_svg() {
 
 static mut LOG_INITIALIZED: bool = false;
 
-fn test_create<'a, T>(vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>) -> Node<'a, ThreadBound>, depth_limit: usize, binding_count: isize) {
+fn test_create_diff_identical_remove<'a, T>(vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)>>) -> Node<'a, ThreadBound>, depth_limit: usize, binding_count: isize) {
 	unsafe {
 		if !LOG_INITIALIZED {
 			//TODO: Fail on Warnig or Error.
@@ -191,6 +191,9 @@ fn test_create<'a, T>(vdom: impl FnOnce(Option<CallbackRef<ThreadBound, fn(DomRe
 	let vdom = vdom(dom_binding);
 
 	differ.update_child_nodes(&[], &[vdom], depth_limit);
+	assert_eq!(*ref_count.borrow(), binding_count);
+
+	differ.update_child_nodes(&[vdom], &[vdom], depth_limit);
 	assert_eq!(*ref_count.borrow(), binding_count);
 
 	differ.update_child_nodes(&[vdom], &[], depth_limit);
