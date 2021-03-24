@@ -2,7 +2,7 @@ use crate::{
 	rc_hash_map::{self, RcHashMap},
 	temp_set::TempEventBindingSet,
 };
-use core::{any::type_name, slice};
+use core::{any::type_name, convert::TryInto, slice};
 use hashbrown::HashSet;
 use js_sys::Function;
 use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, EventBinding, ReorderableFragment, ThreadBound};
@@ -70,7 +70,9 @@ impl DomDiffer {
 		let element = self.element.clone();
 		let child_nodes = self.element.child_nodes();
 		let owner_document = self.element.owner_document().expect_throw("lignin-dom: No owner document found for root element.");
-		self.diff_splice_node_list(&owner_document, vdom_a, vdom_b, &element, &child_nodes, &mut 0, depth_limit);
+		let mut i = 0;
+		self.diff_splice_node_list(&owner_document, vdom_a, vdom_b, &element, &child_nodes, &mut i, depth_limit);
+		debug_assert_eq!(i, lignin::Node::Multi(vdom_b).dom_len().try_into().unwrap_throw());
 
 		{
 			let drain = self.handler_handles.drain_weak();
@@ -245,10 +247,15 @@ impl DomDiffer {
 
 					(lignin::Node::Memoized { state_key: sk_1, content: c_1 }, lignin::Node::Memoized { state_key: sk_2, content: c_2 }) => {
 						trace!("Diffing memoized:");
-						if sk_1 != sk_2 {
-							self.diff_splice_node_list(document, slice::from_ref(c_1), slice::from_ref(c_2), parent_element, dom_slice, i, depth_limit - 1)
+						if sk_1 == sk_2 {
+							//TODO: Recursion limit.
+							let dom_len = c_2.dom_len().try_into().unwrap_throw();
+							trace!("State keys matched. Advancing past {} DOM node(s).", dom_len);
+							dom_len
+						} else {
+							self.diff_splice_node_list(document, slice::from_ref(c_1), slice::from_ref(c_2), parent_element, dom_slice, i, depth_limit - 1);
+							0
 						}
-						0
 					}
 
 					(lignin::Node::Multi(n_1), lignin::Node::Multi(n_2)) => {
