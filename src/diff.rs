@@ -733,99 +733,154 @@ impl DomDiffer {
 		}
 	}
 
+	/// Efficiently removes DOM bindings for a to-be-deleted DOM tree without removing them from the DOM.
+	#[allow(clippy::never_loop)] // For `'unbound_node: loop`.
+	#[allow(clippy::too_many_lines)]
 	fn unbind_node(&mut self, document: &web_sys::Document, node: &lignin::Node<ThreadBound>, dom_slice: &web_sys::NodeList, i: &mut u32, depth_limit: usize) {
 		if depth_limit == 0 {
 			return error!("Depth limit reached");
 		}
 
-		match *node {
-			lignin::Node::Comment { comment, dom_binding } => {
-				trace!("Unbinding comment.");
+		macro_rules! unbind_element {
+			($element:expr, $dom_binding:expr, $debug_kind:literal, $web_type:ty, $($label:tt)+) => {{
 				let node = match dom_slice.get(*i) {
 					Some(node) => node,
 					None => {
-						error!("Expected to unbind comment beyond end of `web_sys::NodeList`. Skipping.");
-						return;
+						error!(
+							"Expected to unbind {} element beyond end of `web_sys::NodeList`. Ignoring bindings.",
+							$debug_kind
+						);
+						break $($label)+ 1;
 					}
 				};
 
-				let dom_comment = match node.dyn_ref::<web_sys::Comment>() {
-					Some(comment) => comment,
+				let dom_element = match node.dyn_ref::<$web_type>() {
+					Some(dom_element) => dom_element,
 					None => {
-						error!("Expected to unbind `web_sys::Comment` but found {:?}; Skipping.", node);
-						return;
+						error!(
+							"Expected to unbind `{}` but found {:?}; Ignoring bindings.",
+							type_name::<$web_type>(),
+							node
+						);
+						break $($label)+ 1;
 					}
 				};
 
-				if let Some(dom_binding) = dom_binding {
-					dom_binding.call(DomRef::Removing(dom_comment.into()))
+				if dom_element.tag_name() != $element.name {
+					error!("Expected to unbind <{}> but found <{}>; Ignoring bindings.", $element.name, dom_element.tag_name());
+						break $($label)+ 1;
 				}
 
-				if log_enabled!(Error) && dom_comment.data() != comment {
-					error!("Unexpected unbound comment data: {:?}", dom_comment.data())
-				}
-			}
-
-			lignin::Node::HtmlElement { element, dom_binding } => {
-				trace!("Unbinding HTML element <{:?}>:", element.name);
-				todo!()
-			}
-			lignin::Node::MathMlElement { element, dom_binding } => {
-				trace!("Unbinding MathML element <{:?}>:", element.name);
-				todo!()
-			}
-			lignin::Node::SvgElement { element, dom_binding } => {
-				trace!("Unbinding SVG element <{:?}>:", element.name);
-				todo!()
-			}
-
-			lignin::Node::Memoized { state_key: _, content } => self.unbind_node(document, content, dom_slice, i, depth_limit - 1),
-			lignin::Node::Multi(nodes) => {
-				trace!("Unbinding multi - start");
-				for node in nodes {
-					self.unbind_node(document, node, dom_slice, i, depth_limit - 1)
-				}
-				trace!("Unbinding multi - end");
-			}
-			lignin::Node::Keyed(reorderable_fragments) => {
-				trace!("Unbinding keyed - start");
-				for lignin::ReorderableFragment { dom_key: _, content } in reorderable_fragments {
-					self.unbind_node(document, content, dom_slice, i, depth_limit - 1)
-				}
-				trace!("Unbinding keyed - end");
-			}
-
-			lignin::Node::Text { text, dom_binding } => {
-				trace!("Unbinding text.");
-				let node = match dom_slice.get(*i) {
-					Some(node) => node,
-					None => {
-						error!("Expected to unbind text beyond end of `web_sys::NodeList`. Skipping.");
-						return;
-					}
-				};
-
-				let dom_text = match node.dyn_ref::<web_sys::Text>() {
-					Some(text) => text,
-					None => {
-						error!("Expected to unbind `web_sys::Text` but found {:?}; Skipping.", node);
-						return;
-					}
-				};
-
-				if let Some(dom_binding) = dom_binding {
-					dom_binding.call(DomRef::Removing(dom_text.into()))
+				if let Some(dom_binding) = $dom_binding {
+					dom_binding.call(DomRef::Removing(dom_element.into()))
 				}
 
-				if log_enabled!(Error) && dom_text.data() != text {
-					error!("Unexpected unbound text data: {:?}", dom_text.data())
-				}
-			}
+				self.unbind_node(document, &$element.content, &dom_element.child_nodes(), &mut 0, depth_limit - 1);
 
-			lignin::Node::RemnantSite(_) => {
-				todo!("Unbind `RemnantSite`")
-			}
+				1
+			}};
 		}
+
+		*i += 'unbound_node: loop {
+			break 'unbound_node match *node {
+				lignin::Node::Comment { comment, dom_binding } => {
+					trace!("Unbinding comment.");
+
+					let node = match dom_slice.get(*i) {
+						Some(node) => node,
+						None => {
+							error!("Expected to unbind comment beyond end of `web_sys::NodeList`. Skipping.");
+							break 'unbound_node 1;
+						}
+					};
+
+					let dom_comment = match node.dyn_ref::<web_sys::Comment>() {
+						Some(comment) => comment,
+						None => {
+							error!("Expected to unbind `web_sys::Comment` but found {:?}; Skipping.", node);
+							break 'unbound_node 1;
+						}
+					};
+
+					if let Some(dom_binding) = dom_binding {
+						dom_binding.call(DomRef::Removing(dom_comment.into()))
+					}
+
+					if log_enabled!(Error) && dom_comment.data() != comment {
+						error!("Unexpected unbound comment data: {:?}", dom_comment.data())
+					}
+
+					1
+				}
+
+				lignin::Node::HtmlElement { element, dom_binding } => {
+					trace!("Unbinding HTML element <{:?}>:", element.name);
+					unbind_element!(element, dom_binding, "HTML", web_sys::HtmlElement, 'unbound_node)
+				}
+				lignin::Node::MathMlElement { element, dom_binding } => {
+					trace!("Unbinding MathML element <{:?}>:", element.name);
+					unbind_element!(element, dom_binding, "MathML", web_sys::Element, 'unbound_node)
+				}
+				lignin::Node::SvgElement { element, dom_binding } => {
+					trace!("Unbinding SVG element <{:?}>:", element.name);
+					unbind_element!(element, dom_binding, "SVG", web_sys::SvgElement, 'unbound_node)
+				}
+
+				lignin::Node::Memoized { state_key: _, content } => {
+					self.unbind_node(document, content, dom_slice, i, depth_limit - 1);
+					0
+				}
+				lignin::Node::Multi(nodes) => {
+					trace!("Unbinding multi - start");
+					for node in nodes {
+						self.unbind_node(document, node, dom_slice, i, depth_limit - 1)
+					}
+					trace!("Unbinding multi - end");
+					0
+				}
+				lignin::Node::Keyed(reorderable_fragments) => {
+					trace!("Unbinding keyed - start");
+					for lignin::ReorderableFragment { dom_key: _, content } in reorderable_fragments {
+						self.unbind_node(document, content, dom_slice, i, depth_limit - 1)
+					}
+					trace!("Unbinding keyed - end");
+					0
+				}
+
+				lignin::Node::Text { text, dom_binding } => {
+					trace!("Unbinding text.");
+					let node = match dom_slice.get(*i) {
+						Some(node) => node,
+						None => {
+							error!("Expected to unbind text beyond end of `web_sys::NodeList`. Skipping.");
+							break 'unbound_node 1;
+						}
+					};
+
+					let dom_text = match node.dyn_ref::<web_sys::Text>() {
+						Some(text) => text,
+						None => {
+							error!("Expected to unbind `web_sys::Text` but found {:?}; Skipping.", node);
+							break 'unbound_node 1;
+						}
+					};
+
+					if let Some(dom_binding) = dom_binding {
+						dom_binding.call(DomRef::Removing(dom_text.into()))
+					}
+
+					if log_enabled!(Error) && dom_text.data() != text {
+						error!("Unexpected unbound text data: {:?}", dom_text.data())
+					}
+
+					1
+				}
+
+				lignin::Node::RemnantSite(_) => {
+					todo!("Unbind `RemnantSite`")
+				}
+			};
+		};
 	}
 
 	fn decrement_handlers(&mut self, node: &lignin::Node<ThreadBound>, depth_limit: usize) {
