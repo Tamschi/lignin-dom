@@ -28,8 +28,7 @@ impl DomDiffer {
 			common_handler: Closure::wrap(Box::new(move |callback_ref: JsValue, event: web_sys::Event| {
 				unsafe { CallbackRef::<ThreadBound, fn(lignin::web::Event)>::from_js(&callback_ref) }
 					.expect_throw(if cfg!(debug_assertions) {
-						//TODO: There's definitely a more elegant way to do this.
-						Box::leak(Box::new(format!("lignin-dom bug: Invalid `CallbackRef` {:?}", callback_ref))).as_str()
+						panic!("lignin-dom bug: Invalid `CallbackRef` {:?}", callback_ref)
 					} else {
 						"lignin-dom bug: Invalid `CallbackRef`. Compile with debug assertions to see the value."
 					})
