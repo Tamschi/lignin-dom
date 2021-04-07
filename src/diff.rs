@@ -6,13 +6,11 @@ use core::{any::type_name, convert::TryInto, slice};
 use hashbrown::HashSet;
 use js_sys::Function;
 use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, EventBinding, ReorderableFragment, ThreadBound};
-use log::{
-	error, info, log_enabled, trace, warn,
-	Level::{Error, Warn},
-};
+use tracing::{error, info, instrument, level_filters::STATIC_MAX_LEVEL, trace, trace_span, warn, Level};
 use wasm_bindgen::{closure::Closure, throw_str, JsCast, JsValue, UnwrapThrowExt};
 
 #[allow(clippy::type_complexity)]
+#[derive(Debug)]
 pub struct DomDiffer {
 	handler_handles: RcHashMap<CallbackRef<ThreadBound, fn(lignin::web::Event)>, u16, Function>,
 	common_handler: Closure<dyn Fn(JsValue, web_sys::Event)>,
@@ -22,6 +20,7 @@ pub struct DomDiffer {
 }
 impl DomDiffer {
 	#[must_use]
+	#[instrument]
 	pub fn new_for_element_child_nodes(element: web_sys::Element) -> Self {
 		Self {
 			handler_handles: RcHashMap::new(),
@@ -41,6 +40,7 @@ impl DomDiffer {
 	}
 
 	#[allow(clippy::type_complexity)]
+	#[instrument]
 	fn get_or_create_listener<'a>(
 		common_handler: &Closure<dyn Fn(JsValue, web_sys::Event)>,
 		handler_handles: &'a mut RcHashMap<CallbackRef<ThreadBound, fn(lignin::web::Event)>, u16, Function>,
@@ -51,6 +51,7 @@ impl DomDiffer {
 			.expect_throw("Too many (more than 65k) active references to the same `CallbackRef`")
 	}
 
+	#[instrument]
 	fn get_cached_add_event_listener_options(event_listener_options_cache: &mut [Option<web_sys::AddEventListenerOptions>; 8], options: lignin::EventBindingOptions) -> &web_sys::AddEventListenerOptions {
 		let entry = event_listener_options_cache
 			.get_mut(options.capture() as usize + options.once() as usize * 2 + options.passive() as usize * 4)
@@ -65,6 +66,7 @@ impl DomDiffer {
 		entry.as_ref().unwrap_throw()
 	}
 
+	#[instrument(skip(vdom_a, vdom_b))]
 	pub fn update_child_nodes(&mut self, vdom_a: &[lignin::Node<'_, ThreadBound>], vdom_b: &[lignin::Node<'_, ThreadBound>], depth_limit: usize) {
 		let element = self.element.clone();
 		let child_nodes = self.element.child_nodes();
@@ -79,7 +81,7 @@ impl DomDiffer {
 		}
 		info!("Event listener count/cached capacity: {}/{}", self.handler_handles.len(), self.handler_handles.capacity());
 		info!("Diff heap capacity (event bindings): {}", self.event_binding_diff_set.capacity());
-		if log_enabled!(Warn) && self.event_binding_diff_set.capacity() >= 100 {
+		if STATIC_MAX_LEVEL >= Level::WARN && self.event_binding_diff_set.capacity() >= 100 {
 			warn!(
 				"The event binding diff heap capacity is large ({}).\n\
 				This may point to inefficient (unstably ordered) use of event bindings.",
@@ -92,6 +94,7 @@ impl DomDiffer {
 	/// If `vdom_b` is empty, `next_sibling` is guaranteed unused.
 	#[allow(clippy::too_many_arguments)]
 	#[allow(clippy::too_many_lines)]
+	#[instrument(skip(vdom_a, vdom_b))]
 	fn diff_splice_node_list(
 		&mut self,
 		document: &web_sys::Document,
@@ -111,7 +114,8 @@ impl DomDiffer {
 			*i += 'vdom_item: loop {
 				break 'vdom_item match (vdom_a[0], vdom_b[0]) {
 					(lignin::Node::Comment { comment: c_1, dom_binding: db_1 }, lignin::Node::Comment { comment: c_2, dom_binding: db_2 }) => {
-						trace!("Diffing comment.");
+						let span = trace_span!("Diffing comment", c_1, c_2, ?db_1, ?db_2);
+						let _enter = span.enter();
 						let node = match dom_slice.get(*i) {
 							Some(node) => node,
 							None => {
@@ -132,7 +136,7 @@ impl DomDiffer {
 						};
 
 						let _guard = loosen_binding(db_1, db_2, comment.into());
-						if log_enabled!(Error) && comment.data() != c_1 {
+						if STATIC_MAX_LEVEL >= Level::ERROR && comment.data() != c_1 {
 							if c_1 == c_2 {
 								error!("Unexpected comment data that won't be updated: Expected {:?} but found {:?}", c_1, comment.data());
 							} else {
@@ -146,7 +150,8 @@ impl DomDiffer {
 					}
 
 					(lignin::Node::HtmlElement { element: e_1, dom_binding: db_1 }, lignin::Node::HtmlElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name && e_1.creation_options == e_2.creation_options => {
-						trace!("Diffing HTML element:");
+						let span = trace_span!("Diffing HTML element", tag = e_1.name, ?db_1, ?db_2);
+						let _enter = span.enter();
 						let node = match dom_slice.get(*i) {
 							Some(node) => node,
 							None => {
@@ -179,7 +184,8 @@ impl DomDiffer {
 					}
 
 					(lignin::Node::MathMlElement { element: e_1, dom_binding: db_1 }, lignin::Node::MathMlElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name && e_1.creation_options == e_2.creation_options => {
-						trace!("Diffing MathML element:");
+						let span = trace_span!("Diffing MathML element", tag = e_1.name, ?db_1, ?db_2);
+						let _enter = span.enter();
 						let node = match dom_slice.get(*i) {
 							Some(node) => node,
 							None => {
@@ -212,7 +218,8 @@ impl DomDiffer {
 					}
 
 					(lignin::Node::SvgElement { element: e_1, dom_binding: db_1 }, lignin::Node::SvgElement { element: e_2, dom_binding: db_2 }) if e_1.name == e_2.name && e_1.creation_options == e_2.creation_options => {
-						trace!("Diffing SVG element:");
+						let span = trace_span!("Diffing SVG element", tag = e_1.name, ?db_1, ?db_2);
+						let _enter = span.enter();
 						let node = match dom_slice.get(*i) {
 							Some(node) => node,
 							None => {
@@ -245,10 +252,11 @@ impl DomDiffer {
 					}
 
 					(lignin::Node::Memoized { state_key: sk_1, content: c_1 }, lignin::Node::Memoized { state_key: sk_2, content: c_2 }) => {
-						trace!("Diffing memoized:");
+						let span = trace_span!("Diffing memoized", sk_1, sk_2);
+						let _enter = span.enter();
 						if sk_1 == sk_2 {
 							//TODO: Recursion limit.
-							let dom_len = c_2.dom_len().try_into().unwrap_throw();
+							let dom_len: u32 = c_2.dom_len().try_into().unwrap_throw();
 							trace!("State keys matched. Advancing past {} DOM node(s).", dom_len);
 							dom_len
 						} else {
@@ -258,17 +266,18 @@ impl DomDiffer {
 					}
 
 					(lignin::Node::Multi(n_1), lignin::Node::Multi(n_2)) => {
-						trace!("Diffing multi - start");
+						let span = trace_span!("Diffing multi", "n_1.len()" = n_1.len(), "n_2.len()" = n_2.len());
+						let _enter = span.enter();
 						// May skip `depth_limit` check one level down.
 						if !n_1.is_empty() || !n_2.is_empty() {
 							self.diff_splice_node_list(document, n_1, n_2, parent_element, dom_slice, i, depth_limit - 1)
 						}
-						trace!("Diffing multi - end");
 						0
 					}
 
 					(lignin::Node::Keyed(mut rf_1), lignin::Node::Keyed(mut rf_2)) => {
-						trace!("Diffing keyed - start");
+						let span = trace_span!("Diffing keyed", "rf_1.len()" = rf_1.len(), "rf_2.len()" = rf_2.len());
+						let _enter = span.enter();
 						while !rf_1.is_empty() {
 							let &ReorderableFragment { dom_key: dk_1, content: ref c_1 } = rf_1.get(0).unwrap_throw();
 
@@ -295,12 +304,12 @@ impl DomDiffer {
 						} else {
 							todo!("Diff `Keyed` (changed tail)")
 						}
-						trace!("Diffing keyed - end");
 						0
 					}
 
 					(lignin::Node::Text { text: t_1, dom_binding: db_1 }, lignin::Node::Text { text: t_2, dom_binding: db_2 }) => {
-						trace!("Diffing text node.");
+						let span = trace_span!("Diffing text node", t_1, t_2, ?db_1, ?db_2);
+						let _enter = span.enter();
 						let node = match dom_slice.get(*i) {
 							Some(node) => node,
 							None => {
@@ -331,14 +340,17 @@ impl DomDiffer {
 					}
 
 					(lignin::Node::RemnantSite(_), lignin::Node::RemnantSite(_)) => {
+						let span = trace_span!("Diffing remnant site");
+						let _enter = span.enter();
 						todo!("`RemnantSite` diff")
 					}
 
 					// Mismatching nodes: Destroy and rebuild.
 					(ref n_1, ref n_2) => {
-						trace!("Replace mismatching");
+						let span = trace_span!("Replace mismatching");
+						let _enter = span.enter();
 
-						if log_enabled!(Warn) {
+						if STATIC_MAX_LEVEL >= Level::WARN {
 							if let (&lignin::Node::HtmlElement { element: e_1, .. }, &lignin::Node::HtmlElement { element: e_2, .. })
 							| (&lignin::Node::SvgElement { element: e_1, .. }, &lignin::Node::SvgElement { element: e_2, .. }) = (n_1, n_2)
 							{
@@ -377,7 +389,8 @@ impl DomDiffer {
 								$debug_kind
 							);
 							for removed_node in vdom_a {
-								trace!("Decrementing listener handles for handlers for further skipped node.");
+								let span = trace_span!("Decrementing listener handles for handlers for further skipped node.");
+								let _enter = span.enter();
 								self.decrement_handlers(removed_node, depth_limit)
 							}
 							break;
@@ -423,7 +436,8 @@ impl DomDiffer {
 
 			match *removed_node {
 				lignin::Node::Comment { comment, dom_binding } => {
-					trace!("Removing comment.");
+					let span = trace_span!("Removing comment", comment, ?dom_binding);
+					let _enter = span.enter();
 					let node = match dom_slice.get(*i) {
 						Some(node) => node,
 						None => {
@@ -453,7 +467,7 @@ impl DomDiffer {
 						dom_binding.call(DomRef::Removing(dom_comment.into()))
 					}
 
-					if log_enabled!(Error) && dom_comment.data() != comment {
+					if STATIC_MAX_LEVEL >= Level::ERROR && dom_comment.data() != comment {
 						error!("Unexpected removed comment data: {:?}", dom_comment.data())
 					}
 
@@ -461,45 +475,49 @@ impl DomDiffer {
 				}
 
 				lignin::Node::HtmlElement { element, dom_binding } => {
-					trace!("Removing HTML element <{:?}>:", element.name);
+					let span = trace_span!("Removing HTML element", tag = element.name, ?dom_binding);
+					let _enter = span.enter();
 					remove_element!(element, dom_binding, "HTML", web_sys::HtmlElement)
 				}
 
 				lignin::Node::MathMlElement { element, dom_binding } => {
-					trace!("Removing MathML element <{:?}>:", element.name);
+					let span = trace_span!("Removing MathML element", tag = element.name, ?dom_binding);
+					let _enter = span.enter();
 					remove_element!(element, dom_binding, "MathML", web_sys::Element)
 				}
 
 				lignin::Node::SvgElement { element, dom_binding } => {
-					trace!("Removing SVG element <{:?}>:", element.name);
+					let span = trace_span!("Removing SVG element", tag = element.name, ?dom_binding);
+					let _enter = span.enter();
 					remove_element!(element, dom_binding, "SVG", web_sys::SvgElement)
 				}
 
 				lignin::Node::Memoized { state_key, content } => {
-					trace!("Removing memoized {:?}:", state_key);
+					let span = trace_span!("Removing memoized", state_key);
+					let _enter = span.enter();
 					self.diff_splice_node_list(document, slice::from_ref(content), &[], parent_element, dom_slice, i, depth_limit - 1)
 				}
 
 				lignin::Node::Multi(nodes) => {
-					trace!("Removing multi - start");
+					let span = trace_span!("Removing multi", "nodes.len()" = nodes.len());
+					let _enter = span.enter();
 					// May skip `depth_limit` check one level down.
 					if !nodes.is_empty() {
 						self.diff_splice_node_list(document, nodes, &[], parent_element, dom_slice, i, depth_limit - 1);
 					}
-					trace!("Removing multi - end");
 				}
 
 				lignin::Node::Keyed(reorderable_fragments) => {
-					trace!("Removing keyed - start");
+					let _enter = trace_span!("Removing keyed", "reorderable_fragments.len()" = reorderable_fragments.len());
 					for reorderable_fragment in reorderable_fragments {
-						trace!("Removing keyed - item {:?}:", reorderable_fragment.dom_key);
+						let _enter = trace_span!("Removing keyed fragment", dom_key = reorderable_fragment.dom_key);
 						self.diff_splice_node_list(document, slice::from_ref(&reorderable_fragment.content), &[], parent_element, dom_slice, i, depth_limit - 1)
 					}
-					trace!("Removing keyed - end");
 				}
 
 				lignin::Node::Text { text, dom_binding } => {
-					trace!("Removing text node.");
+					let span = trace_span!("Removing text node", text, ?dom_binding);
+					let _enter = span.enter();
 					let node = match dom_slice.get(*i) {
 						Some(node) => node,
 						None => {
@@ -529,7 +547,7 @@ impl DomDiffer {
 						dom_binding.call(DomRef::Removing(dom_text.into()))
 					}
 
-					if log_enabled!(Error) && dom_text.data() != text {
+					if STATIC_MAX_LEVEL >= Level::ERROR && dom_text.data() != text {
 						error!("Unexpected removed text data: {:?}", dom_text.data())
 					}
 
@@ -537,6 +555,8 @@ impl DomDiffer {
 				}
 
 				lignin::Node::RemnantSite(_) => {
+					let span = trace_span!("Removing remnant site");
+					let _enter = span.enter();
 					todo!("Remove `RemnantSite`")
 				}
 			}
@@ -547,7 +567,8 @@ impl DomDiffer {
 		for new_node in vdom_b {
 			*i += match *new_node {
 				lignin::Node::Comment { comment, dom_binding } => {
-					trace!("Creating comment.");
+					let span = trace_span!("Creating comment", comment, ?dom_binding);
+					let _enter = span.enter();
 					let dom_comment = document.create_comment(comment);
 					if let Err(error) = parent_element.insert_before(dom_comment.as_ref(), next_sibling) {
 						error!("Failed to insert comment: {:?}", error);
@@ -561,7 +582,8 @@ impl DomDiffer {
 
 				lignin::Node::HtmlElement { element, dom_binding } => {
 					let &lignin::Element { name, creation_options, .. } = element;
-					trace!("Creating HTML element <{:?}>:", name);
+					let span = trace_span!("Creating HTML element", name, ?creation_options, ?dom_binding);
+					let _enter = span.enter();
 
 					let dom_element = match match creation_options.is() {
 						// This isn't entirely modern, but is well-supported.
@@ -604,7 +626,8 @@ impl DomDiffer {
 
 				lignin::Node::MathMlElement { element, dom_binding } => {
 					let &lignin::Element { name, creation_options, .. } = element;
-					trace!("Creating MathML element <{:?}>:", name);
+					let span = trace_span!("Creating MathML element", name, ?creation_options, ?dom_binding);
+					let _enter = span.enter();
 
 					let dom_element = match match creation_options.is() {
 						// This isn't entirely modern, but is well-supported.
@@ -647,7 +670,8 @@ impl DomDiffer {
 
 				lignin::Node::SvgElement { element, dom_binding } => {
 					let &lignin::Element { name, creation_options, .. } = element;
-					trace!("Creating SVG element <{:?}>:", name);
+					let span = trace_span!("Creating SVG element", name, ?creation_options, ?dom_binding);
+					let _enter = span.enter();
 
 					let dom_element = match match creation_options.is() {
 						// This isn't entirely modern, but is well-supported.
@@ -689,31 +713,34 @@ impl DomDiffer {
 				}
 
 				lignin::Node::Memoized { state_key, content } => {
-					trace!("Creating memoized {:?}:", state_key);
+					let span = trace_span!("Creating memoized", state_key);
+					let _enter = span.enter();
 					self.diff_splice_node_list(document, &[], slice::from_ref(content), parent_element, dom_slice, i, depth_limit - 1);
 					0
 				}
 				lignin::Node::Multi(nodes) => {
-					trace!("Creating multi - start");
+					let span = trace_span!("Creating multi", "nodes.len()" = nodes.len());
+					let _enter = span.enter();
 					// May skip `depth_limit` check one level down.
 					if !nodes.is_empty() {
 						self.diff_splice_node_list(document, &[], nodes, parent_element, dom_slice, i, depth_limit - 1);
 					}
-					trace!("Creating multi - end");
 					0
 				}
 				lignin::Node::Keyed(reorderable_fragments) => {
-					trace!("Creating keyed - start");
+					let span = trace_span!("Creating keyed", "reorderable_fragments.len()" = reorderable_fragments.len());
+					let _enter = span.enter();
 					for reorderable_fragment in reorderable_fragments {
-						trace!("Creating keyed - item {:?}:", reorderable_fragment.dom_key);
+						let span = trace_span!("Creating keyed fragment", dom_key = reorderable_fragment.dom_key);
+						let _enter = span.enter();
 						self.diff_splice_node_list(document, &[], slice::from_ref(&reorderable_fragment.content), parent_element, dom_slice, i, depth_limit - 1)
 					}
-					trace!("Creating keyed - end");
 					0
 				}
 
 				lignin::Node::Text { text, dom_binding } => {
-					trace!("Creating text node.");
+					let span = trace_span!("Creating text node", text, ?dom_binding);
+					let _enter = span.enter();
 					let dom_text = document.create_text_node(text);
 					if let Err(error) = parent_element.insert_before(dom_text.as_ref(), next_sibling) {
 						error!("Failed to insert text: {:?}", error);
@@ -726,6 +753,8 @@ impl DomDiffer {
 				}
 
 				lignin::Node::RemnantSite(_) => {
+					let span = trace_span!("Creating remnant site");
+					let _enter = span.enter();
 					todo!("Create `RemnantSite`")
 				}
 			};
@@ -735,6 +764,7 @@ impl DomDiffer {
 	/// Efficiently removes DOM bindings for a to-be-deleted DOM tree without removing them from the DOM.
 	#[allow(clippy::never_loop)] // For `'unbound_node: loop`.
 	#[allow(clippy::too_many_lines)]
+	#[instrument(skip(node))]
 	fn unbind_node(&mut self, document: &web_sys::Document, node: &lignin::Node<ThreadBound>, dom_slice: &web_sys::NodeList, i: &mut u32, depth_limit: usize) {
 		if depth_limit == 0 {
 			return error!("Depth limit reached");
@@ -783,7 +813,8 @@ impl DomDiffer {
 		*i += 'unbound_node: loop {
 			break 'unbound_node match *node {
 				lignin::Node::Comment { comment, dom_binding } => {
-					trace!("Unbinding comment.");
+					let span = trace_span!("Unbinding comment", comment, ?dom_binding);
+					let _enter = span.enter();
 
 					let node = match dom_slice.get(*i) {
 						Some(node) => node,
@@ -805,7 +836,7 @@ impl DomDiffer {
 						dom_binding.call(DomRef::Removing(dom_comment.into()))
 					}
 
-					if log_enabled!(Error) && dom_comment.data() != comment {
+					if STATIC_MAX_LEVEL >= Level::ERROR && dom_comment.data() != comment {
 						error!("Unexpected unbound comment data: {:?}", dom_comment.data())
 					}
 
@@ -813,41 +844,49 @@ impl DomDiffer {
 				}
 
 				lignin::Node::HtmlElement { element, dom_binding } => {
-					trace!("Unbinding HTML element <{:?}>:", element.name);
+					let span = trace_span!("Unbinding HTML element", tag = element.name, creation_options = ?element.creation_options, ?dom_binding);
+					let _enter = span.enter();
 					unbind_element!(element, dom_binding, "HTML", web_sys::HtmlElement, 'unbound_node)
 				}
 				lignin::Node::MathMlElement { element, dom_binding } => {
-					trace!("Unbinding MathML element <{:?}>:", element.name);
+					let span = trace_span!("Unbinding MathML element", tag = element.name, creation_options = ?element.creation_options, ?dom_binding);
+					let _enter = span.enter();
 					unbind_element!(element, dom_binding, "MathML", web_sys::Element, 'unbound_node)
 				}
 				lignin::Node::SvgElement { element, dom_binding } => {
-					trace!("Unbinding SVG element <{:?}>:", element.name);
+					let span = trace_span!("Unbinding SVG element", tag = element.name, creation_options = ?element.creation_options, ?dom_binding);
+					let _enter = span.enter();
 					unbind_element!(element, dom_binding, "SVG", web_sys::SvgElement, 'unbound_node)
 				}
 
-				lignin::Node::Memoized { state_key: _, content } => {
+				lignin::Node::Memoized { state_key, content } => {
+					let span = trace_span!("Unbinding memoized", state_key);
+					let _enter = span.enter();
 					self.unbind_node(document, content, dom_slice, i, depth_limit - 1);
 					0
 				}
 				lignin::Node::Multi(nodes) => {
-					trace!("Unbinding multi - start");
+					let span = trace_span!("Unbinding multi", "nodes.len()" = nodes.len());
+					let _enter = span.enter();
 					for node in nodes {
 						self.unbind_node(document, node, dom_slice, i, depth_limit - 1)
 					}
-					trace!("Unbinding multi - end");
 					0
 				}
 				lignin::Node::Keyed(reorderable_fragments) => {
-					trace!("Unbinding keyed - start");
-					for lignin::ReorderableFragment { dom_key: _, content } in reorderable_fragments {
+					let span = trace_span!("Unbinding keyed", "reorderable_fragments.len()" = reorderable_fragments.len());
+					let _enter = span.enter();
+					for lignin::ReorderableFragment { dom_key, content } in reorderable_fragments {
+						let span = trace_span!("Unbinding keyed fragment", dom_key);
+						let _enter = span.enter();
 						self.unbind_node(document, content, dom_slice, i, depth_limit - 1)
 					}
-					trace!("Unbinding keyed - end");
 					0
 				}
 
 				lignin::Node::Text { text, dom_binding } => {
-					trace!("Unbinding text.");
+					let span = trace_span!("Unbinding text node", text, ?dom_binding);
+					let _enter = span.enter();
 					let node = match dom_slice.get(*i) {
 						Some(node) => node,
 						None => {
@@ -868,7 +907,7 @@ impl DomDiffer {
 						dom_binding.call(DomRef::Removing(dom_text.into()))
 					}
 
-					if log_enabled!(Error) && dom_text.data() != text {
+					if STATIC_MAX_LEVEL >= Level::ERROR && dom_text.data() != text {
 						error!("Unexpected unbound text data: {:?}", dom_text.data())
 					}
 
@@ -876,12 +915,15 @@ impl DomDiffer {
 				}
 
 				lignin::Node::RemnantSite(_) => {
+					let span = trace_span!("Unbinding remnant site");
+					let _enter = span.enter();
 					todo!("Unbind `RemnantSite`")
 				}
 			};
 		};
 	}
 
+	#[instrument(skip(node))]
 	fn decrement_handlers(&mut self, node: &lignin::Node<ThreadBound>, depth_limit: usize) {
 		if depth_limit == 0 {
 			return error!("Depth limit reached");
@@ -890,7 +932,8 @@ impl DomDiffer {
 		match *node {
 			lignin::Node::Comment { .. } | lignin::Node::Text { .. } => trace!("Nothing to do for comment or text."),
 			lignin::Node::HtmlElement { element, dom_binding: _ } | lignin::Node::MathMlElement { element, dom_binding: _ } | lignin::Node::SvgElement { element, dom_binding: _ } => {
-				trace!("Decrementing listener handles for element <{:?}>:", element.name);
+				let span = trace_span!("Decrementing listener handles for element", tag = element.name);
+				let _enter = span.enter();
 				for lignin::EventBinding { callback, .. } in element.event_bindings {
 					match self.handler_handles.weak_decrement(callback) {
 						Ok(Some(_)) => (),
@@ -902,24 +945,29 @@ impl DomDiffer {
 				self.decrement_handlers(&element.content, depth_limit - 1)
 			}
 			lignin::Node::Memoized { state_key, content } => {
-				trace!("Decrementing listener handles for memoized {:?}:", state_key);
+				let span = trace_span!("Decrementing listener handles for memoized", state_key);
+				let _enter = span.enter();
 				self.decrement_handlers(content, depth_limit - 1)
 			}
 			lignin::Node::Multi(nodes) => {
-				trace!("Decrementing listener handles for multi - start");
+				let span = trace_span!("Decrementing listener handles for multi", "nodes.len()" = nodes.len());
+				let _enter = span.enter();
 				for node in nodes {
 					self.decrement_handlers(node, depth_limit - 1)
 				}
-				trace!("Decrementing listener handles for multi - end");
 			}
 			lignin::Node::Keyed(reorderable_fragments) => {
-				trace!("Decrementing listener handles for keyed - start");
-				for lignin::ReorderableFragment { dom_key: _, content } in reorderable_fragments {
+				let span = trace_span!("Decrementing listener handles for keyed", "reorderable_fragments.len()" = reorderable_fragments.len());
+				let _enter = span.enter();
+				for lignin::ReorderableFragment { dom_key, content } in reorderable_fragments {
+					let span = trace_span!("Decrementing listener handles for keyed fragment", dom_key);
+					let _enter = span.enter();
 					self.decrement_handlers(content, depth_limit - 1)
 				}
-				trace!("Decrementing listener handles for keyed - end");
 			}
 			lignin::Node::RemnantSite(_) => {
+				let span = trace_span!("Decrementing listener handles for remnant site");
+				let _enter = span.enter();
 				todo!("Decrement `RemnantSite` event handlers")
 			}
 		}
@@ -927,6 +975,7 @@ impl DomDiffer {
 
 	#[allow(clippy::items_after_statements)]
 	#[allow(clippy::similar_names)]
+	#[instrument(skip(c_1, c_2))]
 	fn update_element(
 		&mut self,
 		document: &web_sys::Document,
@@ -947,25 +996,23 @@ impl DomDiffer {
 		element: &web_sys::Element,
 		depth_limit: usize,
 	) {
-		trace!("Updating element - start");
-
 		debug_assert_eq!(n_1, n_2);
 		debug_assert_eq!(co_1, co_2);
 
+		#[instrument]
 		fn remove_attribute(attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute) {
-			trace!("Removing attribute {:?}={:?}.", name, value);
 			match attributes.remove_named_item(name) {
 				Err(error) => warn!("Could not remove attribute with name {:?}, value {:?}: {:?}", name, value, error),
 				Ok(removed) => {
-					if log_enabled!(Warn) && removed.value() != value {
+					if STATIC_MAX_LEVEL >= Level::WARN && removed.value() != value {
 						warn!("Unexpected value of removed attribute {:?}: Expected {:?} but found {:?}", name, value, removed.value());
 					}
 				}
 			}
 		}
 
+		#[instrument]
 		fn add_attribute(document: &web_sys::Document, attributes: &web_sys::NamedNodeMap, &lignin::Attribute { name, value }: &lignin::Attribute) {
-			trace!("Adding attribute {:?}={:?}.", name, value);
 			let attribute = match document.create_attribute(name) {
 				Ok(attribute) => attribute,
 				Err(error) => return error!("Could not create attribute {:?}: {:?}", name, error),
@@ -999,7 +1046,7 @@ impl DomDiffer {
 			}
 		}
 
-		if log_enabled!(Error) {
+		if STATIC_MAX_LEVEL >= Level::ERROR {
 			for (i_a, eb_a) in eb_2.iter().enumerate() {
 				for (i_b, eb_b) in eb_2.iter().enumerate() {
 					if i_a != i_b && eb_a == eb_b {
@@ -1048,12 +1095,10 @@ impl DomDiffer {
 		}
 
 		self.diff_splice_node_list(document, slice::from_ref(c_1), slice::from_ref(c_2), element, &element.child_nodes(), &mut 0, depth_limit - 1);
-
-		trace!("Updating element - end");
 	}
 
+	#[instrument]
 	fn add_event_listener(&mut self, element: &web_sys::Element, lignin::EventBinding { name, callback, options }: lignin::EventBinding<ThreadBound>) {
-		trace!("Adding event listener {:?} ({:?}).", name, options);
 		if let Err(error) = element.add_event_listener_with_callback_and_add_event_listener_options(
 			name,
 			Self::get_or_create_listener(&self.common_handler, &mut self.handler_handles, callback),
@@ -1063,9 +1108,9 @@ impl DomDiffer {
 		}
 	}
 
+	#[instrument]
 	fn remove_event_listener(&mut self, element: &web_sys::Element, removed: &lignin::EventBinding<ThreadBound>) {
 		let &lignin::EventBinding { name, ref callback, options } = removed;
-		trace!("Removing event listener {:?} ({:?}).", name, options);
 		let callback = self.handler_handles.weak_decrement(callback).unwrap_throw().unwrap_throw();
 		if let Err(error) = element.remove_event_listener_with_callback_and_bool(name, callback, options.capture()) {
 			error!("Failed to remove event listener {:?} ({:?}): {:?}", name, options, error)
@@ -1082,6 +1127,8 @@ fn loosen_binding<T>(previous: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)
 		BindingTransition { next: None, parameter }
 	} else {
 		if let Some(previous) = previous {
+			let span = trace_span!("Unbinding", dom_binding = ?previous);
+			let _enter = span.enter();
 			previous.call(DomRef::Removing(parameter));
 		}
 		BindingTransition { next, parameter }
@@ -1100,6 +1147,8 @@ fn loosen_binding<T>(previous: Option<CallbackRef<ThreadBound, fn(DomRef<&'_ T>)
 	{
 		fn drop(&mut self) {
 			if let Some(next) = self.next {
+				let span = trace_span!("Binding", dom_binding = ?next);
+				let _enter = span.enter();
 				next.call(DomRef::Added(self.parameter));
 			}
 		}

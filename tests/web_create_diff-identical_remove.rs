@@ -1,6 +1,5 @@
 use lignin::{web::Event, CallbackRef, CallbackRegistration, DomRef, Element, ElementCreationOptions, EventBinding, EventBindingOptions, Node, ReorderableFragment, ThreadBound};
 use lignin_dom::{diff::DomDiffer, load::Allocator as _};
-use log::Level;
 use std::cell::RefCell;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
@@ -169,7 +168,7 @@ fn test_create_diff_identical_remove<'a, T>(vdom: impl FnOnce(Option<CallbackRef
 	unsafe {
 		if !LOG_INITIALIZED {
 			//TODO: Fail on Warnig or Error.
-			console_log::init_with_level(Level::Trace).unwrap();
+			tracing_wasm::set_as_global_default();
 			LOG_INITIALIZED = true;
 		}
 	}

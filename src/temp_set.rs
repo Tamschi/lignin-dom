@@ -1,6 +1,7 @@
 use hashbrown::HashSet;
 use lignin::{EventBinding, ThreadBound};
 
+#[derive(Debug)]
 pub struct TempEventBindingSet(HashSet<EventBinding<'static, ThreadBound>>);
 impl TempEventBindingSet {
 	pub fn new() -> Self {

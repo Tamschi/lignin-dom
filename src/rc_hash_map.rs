@@ -8,6 +8,7 @@ use hashbrown::{
 };
 use num_traits::{CheckedAdd, CheckedSub, One, Zero};
 
+#[derive(Debug)]
 pub struct RcHashMap<K, C, V, S = DefaultHashBuilder>(HashMap<K, (C, V), S>)
 where
 	K: Hash + Eq,
