@@ -1,6 +1,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 use lignin::ThreadSafe;
+use tracing::instrument;
 use std::{convert::TryInto, iter};
 use wasm_bindgen::{JsCast, UnwrapThrowExt};
 
@@ -43,6 +44,7 @@ impl<T, NextAt: FnMut(usize) -> T> ExactSizeIterator for SliceGenerator<T, NextA
 	}
 }
 
+#[instrument(skip(allocator))]
 pub fn load_child_nodes<'a, A: Allocator<'a>>(allocator: &A, child_nodes: &web_sys::NodeList) -> lignin::Node<'a, ThreadSafe> {
 	match child_nodes.length() {
 		1 => load_node(allocator, &child_nodes.item(0).unwrap()),
@@ -50,6 +52,7 @@ pub fn load_child_nodes<'a, A: Allocator<'a>>(allocator: &A, child_nodes: &web_s
 	}
 }
 
+#[instrument(skip(allocator))]
 pub fn load_node<'a, A: Allocator<'a>>(allocator: &A, node: &web_sys::Node) -> lignin::Node<'a, ThreadSafe> {
 	if let Some(element) = node.dyn_ref::<web_sys::Element>() {
 		lignin::Node::HtmlElement {
@@ -71,6 +74,7 @@ pub fn load_node<'a, A: Allocator<'a>>(allocator: &A, node: &web_sys::Node) -> l
 	}
 }
 
+#[instrument(skip(allocator))]
 pub fn load_element<'a, A: Allocator<'a>>(allocator: &A, element: &web_sys::Element) -> lignin::Element<'a, ThreadSafe> {
 	let node: &web_sys::Node = element.as_ref();
 	lignin::Element {
@@ -82,6 +86,7 @@ pub fn load_element<'a, A: Allocator<'a>>(allocator: &A, element: &web_sys::Elem
 	}
 }
 
+#[instrument(skip(allocator))]
 pub fn load_attributes<'a, A: Allocator<'a>>(allocator: &A, attributes: &web_sys::NamedNodeMap) -> &'a [lignin::Attribute<'a>] {
 	let reserved_count = match attributes.get_named_item("is") {
 		Some(_) => 1,
@@ -93,6 +98,7 @@ pub fn load_attributes<'a, A: Allocator<'a>>(allocator: &A, attributes: &web_sys
 	}))
 }
 
+#[instrument(skip(allocator))]
 pub fn load_attribute<'a, A: Allocator<'a>>(allocator: &A, attributes: &web_sys::NamedNodeMap, index: u32, reserved_seen: &mut u32) -> lignin::Attribute<'a> {
 	let (name, value) = loop {
 		let attribute = attributes.item(index + *reserved_seen).unwrap_throw();
