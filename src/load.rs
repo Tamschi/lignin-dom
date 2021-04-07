@@ -1,8 +1,8 @@
 #![allow(clippy::module_name_repetitions)]
 
 use lignin::ThreadSafe;
-use tracing::instrument;
 use std::{convert::TryInto, iter};
+use tracing::instrument;
 use wasm_bindgen::{JsCast, UnwrapThrowExt};
 
 pub trait Allocator<'a> {
