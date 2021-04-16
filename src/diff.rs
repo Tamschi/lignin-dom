@@ -25,7 +25,7 @@ impl DomDiffer {
 		Self {
 			handler_handles: RcHashMap::new(),
 			common_handler: Closure::wrap(Box::new(move |callback_ref: JsValue, event: web_sys::Event| {
-				let span = trace_span!("lignin_dom common_handler", callback_ref = ?&callback_ref, event = ?&event);
+				let span = trace_span!("common_handler", callback_ref = ?&callback_ref, event = ?&event);
 				let _enter = span.enter();
 
 				let callback_ref = unsafe { CallbackRef::<ThreadBound, fn(lignin::web::Event)>::from_js(&callback_ref) };
