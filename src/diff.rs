@@ -25,13 +25,20 @@ impl DomDiffer {
 		Self {
 			handler_handles: RcHashMap::new(),
 			common_handler: Closure::wrap(Box::new(move |callback_ref: JsValue, event: web_sys::Event| {
-				unsafe { CallbackRef::<ThreadBound, fn(lignin::web::Event)>::from_js(&callback_ref) }
-					.expect_throw(if cfg!(debug_assertions) {
-						panic!("lignin-dom bug: Invalid `CallbackRef` {:?}", callback_ref)
-					} else {
-						"lignin-dom bug: Invalid `CallbackRef`. Compile with debug assertions to see the value."
-					})
-					.call(event.into());
+				let span = trace_span!("lignin_dom common_handler", callback_ref = ?&callback_ref, event = ?&event);
+				let _enter = span.enter();
+
+				let callback_ref = unsafe { CallbackRef::<ThreadBound, fn(lignin::web::Event)>::from_js(&callback_ref) };
+				let callback_ref = if cfg!(debug_assertions) {
+					callback_ref.unwrap_or_else(move || panic!("lignin-dom bug: Invalid `CallbackRef` {:?}", callback_ref))
+				} else {
+					callback_ref.expect_throw("lignin-dom bug: Invalid `CallbackRef`. Compile with debug assertions to see the value.")
+				};
+
+				#[allow(clippy::non_ascii_literal)]
+				let span = trace_span!("callback_ref.call(…)");
+				let _enter = span.enter();
+				callback_ref.call(event.into());
 			})),
 			element,
 			event_listener_options_cache: [None, None, None, None, None, None, None, None],

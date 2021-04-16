@@ -1,5 +1,5 @@
-use lignin::{web::Event, CallbackRef, CallbackRegistration, DomRef, Element, ElementCreationOptions, EventBinding, EventBindingOptions, Materialize, Node, ReorderableFragment, ThreadBound};
-use lignin_dom::{diff::DomDiffer, load::Allocator as _};
+use lignin::{web::Event, CallbackRegistration, Element, ElementCreationOptions, EventBinding, EventBindingOptions, Materialize, Node};
+use lignin_dom::diff::DomDiffer;
 use std::cell::RefCell;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
@@ -51,14 +51,15 @@ fn click() {
 
 	let vdom = Node::HtmlElement { element: &element, dom_binding: None };
 
+	//TODO: Skip the depth limit check differently for empty multi nodes so that 1 works here.
 	assert_eq!(*click_count.borrow(), 0);
-	differ.update_child_nodes(&[], &[vdom], 1);
+	differ.update_child_nodes(&[], &[vdom], 2);
 	assert_eq!(*click_count.borrow(), 0);
 
 	let button: HtmlElement = window().unwrap().document().unwrap().get_element_by_id("test-button").unwrap().dyn_into().unwrap();
 	button.click();
 
 	assert_eq!(*click_count.borrow(), 1);
-	differ.update_child_nodes(&[vdom], &[], 1);
+	differ.update_child_nodes(&[vdom], &[], 2);
 	assert_eq!(*click_count.borrow(), 1);
 }
