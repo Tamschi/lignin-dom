@@ -51,7 +51,6 @@ fn click() {
 
 	let vdom = Node::HtmlElement { element: &element, dom_binding: None };
 
-	//TODO: Skip the depth limit check differently for empty multi nodes so that 1 works here.
 	assert_eq!(*click_count.borrow(), 0);
 	differ.update_child_nodes(&[], &[vdom], 2);
 	assert_eq!(*click_count.borrow(), 0);
