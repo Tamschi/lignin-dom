@@ -20,7 +20,6 @@ include = [
 	"LICENSE-*",
 	"README.md",
 ]
-resolver = "2"
 publish = false
 
 [badges]
