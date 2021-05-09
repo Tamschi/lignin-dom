@@ -59,12 +59,35 @@ fn keyed() {
 					content: Node::Text { text: "Hello lignin-dom", dom_binding },
 				},
 				ReorderableFragment {
-					dom_key: 0, // Intentionally the same as above.
+					dom_key: 1,
 					content: Node::Text { text: " keyed ", dom_binding },
 				},
 				ReorderableFragment {
-					dom_key: 1,
+					dom_key: 2,
 					content: Node::Text { text: " nodes.", dom_binding },
+				},
+			]))
+		},
+		2,
+		3,
+	);
+}
+
+//TODO: Individually make sure inserting and diffing towards a `Node::Keyed` with duplicate `dom_key`s panics, the former only with `cfg!(debug_assertions)`.
+#[allow(dead_code, unused_attributes)] // This currently isn't supported by wasm-bindgen-test. See <https://github.com/rustwasm/wasm-bindgen/issues/2286>.
+// #[wasm_bindgen_test]
+#[should_panic]
+fn keyed_duplicate() {
+	test_create_diff_identical_remove(
+		|dom_binding| {
+			Node::Keyed(Allocator.allocate([
+				ReorderableFragment {
+					dom_key: 0,
+					content: Node::Text { text: "Duplicate `dom_key`s", dom_binding },
+				},
+				ReorderableFragment {
+					dom_key: 0, // Intentionally the same as above.
+					content: Node::Text { text: " aren't allowed.", dom_binding },
 				},
 			]))
 		},

@@ -11,8 +11,13 @@ TODO: Date
     > to support fallible allocation/bump object initialisation downstream.
   * Increased minimum supported Rust version from 1.42.0 to 1.46.0
     > required because of `lignin` upgrade.
+* Features:
+  * `lignin-dom` is now feature-complete for the current version of `lignin`,
+    > and as such should never panic as long as the implementation contract specified by `lignin` is observed.
 * Revisions:
   * `lignin-dom` now avoids memory leaks when it fails to locate event bindings in the DOM and warns about the latter.
+  * Duplicate `ReorderableFragment::dom_key`s now more often lead to panics, especially when `cfg!(debug_assertions) == true`.
+    > This was disallowed before, but `lignin_dom` was more lenient in this regard than necessary.
 
 ## 0.0.3
 

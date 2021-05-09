@@ -287,6 +287,9 @@ impl DomDiffer {
 					(lignin::Node::Keyed(mut rf_1), lignin::Node::Keyed(mut rf_2)) => {
 						let span = trace_span!("Diffing keyed", "rf_1.len()" = rf_1.len(), "rf_2.len()" = rf_2.len());
 						let _enter = span.enter();
+
+						debug_assert_eq!(rf_2.len(), rf_2.iter().map(|b| b.dom_key).collect::<HashSet<_>>().len(), "Duplicate `ReorderableFragment::key` encountered");
+
 						while !rf_1.is_empty() {
 							let &ReorderableFragment { dom_key: dk_1, content: ref c_1 } = rf_1.get(0).unwrap_throw();
 
@@ -313,17 +316,27 @@ impl DomDiffer {
 						} else {
 							// Help wanted: This is an inefficient algorithm.
 							//TODO: Test this thoroughly!
-							let mut map = hashbrown::HashMap::<usize, Vec<(&lignin::Node<ThreadBound>, Option<Vec<web_sys::Node>>)>>::new();
+							let mut map = hashbrown::HashMap::<usize, (&lignin::Node<ThreadBound>, Option<Vec<web_sys::Node>>)>::new();
+
+							// Create target slot index:
 							for b in rf_2 {
 								match map.entry(b.dom_key) {
-									Entry::Occupied(mut o) => o.get_mut().push((&b.content, None)),
+									Entry::Occupied(_) => {
+										if cfg!(debug_assertions) {
+											panic!("Duplicate `ReorderableFragment::dom_key` encountered: {}", b.dom_key);
+										} else {
+											throw_str("Duplicate `ReorderableFragment::dom_key` encountered.")
+										}
+									}
 									Entry::Vacant(v) => {
-										v.insert(vec![(&b.content, None)]);
+										v.insert((&b.content, None));
 									}
 								}
 							}
+
+							// Diff and collect target DOM nodes:
 							for a in rf_1 {
-								let slot = map.get_mut(&a.dom_key).and_then(|bs| bs.iter_mut().find(|slot| slot.1 == None));
+								let slot = map.get_mut(&a.dom_key);
 								match slot {
 									None => self.diff_splice_node_list(document, slice::from_ref(&a.content), &[], parent_element, dom_slice, i, depth_limit - 1),
 									Some(slot) => {
@@ -337,14 +350,16 @@ impl DomDiffer {
 									}
 								}
 							}
+
+							// Reinsert DOM nodes in order and diff-create new ones where necessary:
+							let next_sibling = dom_slice.get(*i);
+							let next_sibling = next_sibling.as_ref();
 							for b in rf_2 {
-								let slot = map.get_mut(&b.dom_key).unwrap_throw().remove(0);
+								let slot = map.remove(&b.dom_key).unwrap_throw();
 								debug_assert_eq!(&b.content as *const _, slot.0 as *const _);
 								match slot.1 {
 									None => self.diff_splice_node_list(document, &[], slice::from_ref(&b.content), parent_element, dom_slice, i, depth_limit - 1),
 									Some(nodes) => {
-										let next_sibling = dom_slice.get(*i);
-										let next_sibling = next_sibling.as_ref();
 										for node in nodes {
 											match parent_element.insert_before(&node, next_sibling) {
 												Ok(_) => *i += 1,
@@ -354,11 +369,7 @@ impl DomDiffer {
 									}
 								}
 							}
-							if cfg!(debug_assertions) {
-								for bucket in map {
-									debug_assert!(bucket.1.is_empty())
-								}
-							}
+							debug_assert!(map.is_empty());
 						}
 						0
 					}
@@ -787,6 +798,13 @@ impl DomDiffer {
 				lignin::Node::Keyed(reorderable_fragments) => {
 					let span = trace_span!("Creating keyed", "reorderable_fragments.len()" = reorderable_fragments.len());
 					let _enter = span.enter();
+
+					debug_assert_eq!(
+						reorderable_fragments.len(),
+						reorderable_fragments.iter().map(|rf| rf.dom_key).collect::<HashSet<_>>().len(),
+						"Duplicate `ReorderableFragment::key` encountered"
+					);
+
 					for reorderable_fragment in reorderable_fragments {
 						let span = trace_span!("Creating keyed fragment", dom_key = reorderable_fragment.dom_key);
 						let _enter = span.enter();
