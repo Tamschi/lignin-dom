@@ -2,8 +2,8 @@ use crate::{
 	rc_hash_map::{self, RcHashMap},
 	temp_set::TempEventBindingSet,
 };
-use core::{any::type_name, convert::TryInto, slice};
-use hashbrown::HashSet;
+use core::{any::type_name, convert::TryInto, iter, slice};
+use hashbrown::{hash_map::Entry, HashSet};
 use js_sys::Function;
 use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, EventBinding, ReorderableFragment, ThreadBound};
 use tracing::{error, info, instrument, level_filters::STATIC_MAX_LEVEL, trace, trace_span, warn, Level};
@@ -311,7 +311,54 @@ impl DomDiffer {
 								self.diff_splice_node_list(document, slice::from_ref(content), &[], parent_element, dom_slice, i, depth_limit - 1)
 							}
 						} else {
-							todo!("Diff `Keyed` (changed tail)")
+							// Help wanted: This is an inefficient algorithm.
+							//TODO: Test this thoroughly!
+							let mut map = hashbrown::HashMap::<usize, Vec<(&lignin::Node<ThreadBound>, Option<Vec<web_sys::Node>>)>>::new();
+							for b in rf_2 {
+								match map.entry(b.dom_key) {
+									Entry::Occupied(mut o) => o.get_mut().push((&b.content, None)),
+									Entry::Vacant(v) => {
+										v.insert(vec![(&b.content, None)]);
+									}
+								}
+							}
+							for a in rf_1 {
+								let slot = map.get_mut(&a.dom_key).and_then(|bs| bs.iter_mut().find(|slot| slot.1 == None));
+								match slot {
+									None => self.diff_splice_node_list(document, slice::from_ref(&a.content), &[], parent_element, dom_slice, i, depth_limit - 1),
+									Some(slot) => {
+										let mut k = *i;
+										self.diff_splice_node_list(document, slice::from_ref(&a.content), slice::from_ref(slot.0), parent_element, dom_slice, &mut k, depth_limit - 1);
+										slot.1 = Some(
+											iter::repeat_with(|| -> web_sys::Node { parent_element.remove_child(&dom_slice.get(*i).unwrap_throw()).unwrap_throw() })
+												.take((k - *i).try_into().unwrap_throw())
+												.collect(),
+										);
+									}
+								}
+							}
+							for b in rf_2 {
+								let slot = map.get_mut(&b.dom_key).unwrap_throw().remove(0);
+								debug_assert_eq!(&b.content as *const _, slot.0 as *const _);
+								match slot.1 {
+									None => self.diff_splice_node_list(document, &[], slice::from_ref(&b.content), parent_element, dom_slice, i, depth_limit - 1),
+									Some(nodes) => {
+										let next_sibling = dom_slice.get(*i);
+										let next_sibling = next_sibling.as_ref();
+										for node in nodes {
+											match parent_element.insert_before(&node, next_sibling) {
+												Ok(_) => *i += 1,
+												Err(error) => error!("Failed to reinsert node: {:?}", error),
+											}
+										}
+									}
+								}
+							}
+							if cfg!(debug_assertions) {
+								for bucket in map {
+									debug_assert!(bucket.1.is_empty())
+								}
+							}
 						}
 						0
 					}
