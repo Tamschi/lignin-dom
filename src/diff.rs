@@ -127,7 +127,7 @@ impl DomDiffer {
 							Some(node) => node,
 							None => {
 								error!("Expected comment beyond end of `web_sys::NodeList`. Switching to insertions.");
-								// TODO: Decrement event listener handles by vdom_a. Info about the total count.
+								self.discard_further_missing(0, vdom_a.iter(), depth_limit);
 								return self.diff_splice_node_list(document, &[], vdom_b, parent_element, dom_slice, i, depth_limit);
 							}
 						};
@@ -163,7 +163,7 @@ impl DomDiffer {
 							Some(node) => node,
 							None => {
 								error!("Expected <{}> beyond end of `web_sys::NodeList`. Switching to insertions.", e_1.name);
-								// TODO: Decrement event listener handles by vdom_a. Info about the total count.
+								self.discard_further_missing(0, vdom_a.iter(), depth_limit);
 								return self.diff_splice_node_list(document, &[], vdom_b, parent_element, dom_slice, i, depth_limit);
 							}
 						};
@@ -197,7 +197,7 @@ impl DomDiffer {
 							Some(node) => node,
 							None => {
 								error!("Expected <{}> beyond end of `web_sys::NodeList`. Switching to insertions.", e_1.name);
-								// TODO: Decrement event listener handles by vdom_a. Info about the total count.
+								self.discard_further_missing(0, vdom_a.iter(), depth_limit);
 								return self.diff_splice_node_list(document, &[], vdom_b, parent_element, dom_slice, i, depth_limit);
 							}
 						};
@@ -231,7 +231,7 @@ impl DomDiffer {
 							Some(node) => node,
 							None => {
 								error!("Expected <{}> beyond end of `web_sys::NodeList`. Switching to insertions.", e_1.name);
-								// TODO: Decrement event listener handles by vdom_a. Info about the total count.
+								self.discard_further_missing(0, vdom_a.iter(), depth_limit);
 								return self.diff_splice_node_list(document, &[], vdom_b, parent_element, dom_slice, i, depth_limit);
 							}
 						};
@@ -267,6 +267,8 @@ impl DomDiffer {
 							trace!("State keys matched. Advancing past {} DOM node(s).", dom_len);
 							dom_len
 						} else {
+							let span = trace_span!("State keys mismatched", sk_1, sk_2);
+							let _enter = span.enter();
 							self.diff_splice_node_list(document, slice::from_ref(c_1), slice::from_ref(c_2), parent_element, dom_slice, i, depth_limit - 1);
 							0
 						}
@@ -275,7 +277,7 @@ impl DomDiffer {
 					(lignin::Node::Multi(n_1), lignin::Node::Multi(n_2)) => {
 						let span = trace_span!("Diffing multi", "n_1.len()" = n_1.len(), "n_2.len()" = n_2.len());
 						let _enter = span.enter();
-						// May skip `depth_limit` check one level down.
+						// Skip `depth_limit` check one level down if there are no items at all.
 						if !n_1.is_empty() || !n_2.is_empty() {
 							self.diff_splice_node_list(document, n_1, n_2, parent_element, dom_slice, i, depth_limit - 1)
 						}
@@ -320,8 +322,8 @@ impl DomDiffer {
 						let node = match dom_slice.get(*i) {
 							Some(node) => node,
 							None => {
-								error!("Expected comment beyond end of `web_sys::NodeList`. Switching to insertions.");
-								// TODO: Decrement event listener handles by vdom_a. Info about the total count.
+								error!("Expected text beyond end of `web_sys::NodeList`. Switching to insertions.");
+								self.discard_further_missing(0, vdom_a.iter(), depth_limit);
 								return self.diff_splice_node_list(document, &[], vdom_b, parent_element, dom_slice, i, depth_limit);
 							}
 						};
@@ -384,7 +386,7 @@ impl DomDiffer {
 
 		let mut vdom_a = vdom_a.iter();
 		for removed_node in vdom_a.by_ref() {
-			self.decrement_handlers(removed_node, depth_limit);
+			let handler_decrement_count = self.decrement_handlers(removed_node, depth_limit);
 
 			macro_rules! remove_element {
 				($element:expr, $dom_binding:expr, $debug_kind:literal, $web_type:ty) => {{
@@ -395,11 +397,7 @@ impl DomDiffer {
 								"Expected to remove {} element beyond end of `web_sys::NodeList`. Skipping further deletions here while ignoring bindings.",
 								$debug_kind
 							);
-							for removed_node in vdom_a {
-								let span = trace_span!("Decrementing listener handles for handlers for further skipped node.");
-								let _enter = span.enter();
-								self.decrement_handlers(removed_node, depth_limit)
-							}
+							self.discard_further_missing(handler_decrement_count, vdom_a, depth_limit);
 							break;
 						}
 					};
@@ -427,6 +425,9 @@ impl DomDiffer {
 
 					if dom_element.tag_name() != $element.name {
 						error!("Expected to remove <{}> but found <{}>; Removing anyway but ignoring bindings.", $element.name, dom_element.tag_name());
+						if handler_decrement_count != 0 {
+							warn!("{} removed event bindings were unaccounted for.", handler_decrement_count)
+						}
 						dom_element.remove();
 						continue;
 					}
@@ -449,6 +450,7 @@ impl DomDiffer {
 						Some(node) => node,
 						None => {
 							error!("Expected to remove comment beyond end of `web_sys::NodeList`. Skipping further deletions here while ignoring bindings.");
+							self.discard_further_missing(handler_decrement_count, vdom_a, depth_limit);
 							break;
 						}
 					};
@@ -529,6 +531,7 @@ impl DomDiffer {
 						Some(node) => node,
 						None => {
 							error!("Expected to remove text beyond end of `web_sys::NodeList`. Skipping further deletions here while ignoring bindings.");
+							self.discard_further_missing(handler_decrement_count, vdom_a, depth_limit);
 							break;
 						}
 					};
@@ -768,6 +771,23 @@ impl DomDiffer {
 		}
 	}
 
+	/// Decrement event listener handles for (further) missing VDOM nodes, and warn if there were any.
+	///
+	/// This function is intentionally not quite idiomatic(ally generic) to make sure no copies are generated.
+	#[instrument(skip(vdom_a))]
+	fn discard_further_missing(&mut self, mut handler_decrement_count: usize, vdom_a: slice::Iter<lignin::Node<'_, ThreadBound>>, depth_limit: usize) {
+		handler_decrement_count += vdom_a
+			.map(|removed_node| {
+				let span = trace_span!("Decrementing listener handles for handlers for further skipped node.");
+				let _enter = span.enter();
+				self.decrement_handlers(removed_node, depth_limit)
+			})
+			.sum::<usize>();
+		if handler_decrement_count != 0 {
+			warn!("{} removed event bindings were unaccounted for.", handler_decrement_count)
+		}
+	}
+
 	/// Efficiently removes DOM bindings for a to-be-deleted DOM tree without removing them from the DOM.
 	#[allow(clippy::never_loop)] // For `'unbound_node: loop`.
 	#[allow(clippy::too_many_lines)]
@@ -931,13 +951,19 @@ impl DomDiffer {
 	}
 
 	#[instrument(skip(node))]
-	fn decrement_handlers(&mut self, node: &lignin::Node<ThreadBound>, depth_limit: usize) {
+	// Decrements the reference count for each event handler by 1 per reference in `node`.
+	// Returns the total decrement count.
+	fn decrement_handlers(&mut self, node: &lignin::Node<ThreadBound>, depth_limit: usize) -> usize {
 		if depth_limit == 0 {
-			return error!("Depth limit reached");
+			error!("Depth limit reached");
+			return 0;
 		}
 
 		match *node {
-			lignin::Node::Comment { .. } | lignin::Node::Text { .. } => trace!("Nothing to do for comment or text."),
+			lignin::Node::Comment { .. } | lignin::Node::Text { .. } => {
+				trace!("Nothing to do for comment or text.");
+				0
+			}
 			lignin::Node::HtmlElement { element, dom_binding: _ } | lignin::Node::MathMlElement { element, dom_binding: _ } | lignin::Node::SvgElement { element, dom_binding: _ } => {
 				let span = trace_span!("Decrementing listener handles for element", tag = element.name);
 				let _enter = span.enter();
@@ -959,18 +985,19 @@ impl DomDiffer {
 			lignin::Node::Multi(nodes) => {
 				let span = trace_span!("Decrementing listener handles for multi", "nodes.len()" = nodes.len());
 				let _enter = span.enter();
-				for node in nodes {
-					self.decrement_handlers(node, depth_limit - 1)
-				}
+				nodes.iter().map(|node| self.decrement_handlers(node, depth_limit - 1)).sum()
 			}
 			lignin::Node::Keyed(reorderable_fragments) => {
 				let span = trace_span!("Decrementing listener handles for keyed", "reorderable_fragments.len()" = reorderable_fragments.len());
 				let _enter = span.enter();
-				for lignin::ReorderableFragment { dom_key, content } in reorderable_fragments {
+				reorderable_fragments
+					.iter()
+					.map(|lignin::ReorderableFragment { dom_key, content }| {
 					let span = trace_span!("Decrementing listener handles for keyed fragment", dom_key);
 					let _enter = span.enter();
 					self.decrement_handlers(content, depth_limit - 1)
-				}
+					})
+					.sum()
 			}
 			lignin::Node::RemnantSite(_) => {
 				let span = trace_span!("Decrementing listener handles for remnant site");

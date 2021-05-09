@@ -11,6 +11,8 @@ TODO: Date
     > to support fallible allocation/bump object initialisation downstream.
   * Increased minimum supported Rust version from 1.42.0 to 1.46.0
     > required because of `lignin` upgrade.
+* Revisions:
+  * `lignin-dom` now avoids memory leaks when it fails to locate event bindings in the DOM and warns about the latter.
 
 ## 0.0.3
 
