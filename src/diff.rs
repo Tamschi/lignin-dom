@@ -993,9 +993,9 @@ impl DomDiffer {
 				reorderable_fragments
 					.iter()
 					.map(|lignin::ReorderableFragment { dom_key, content }| {
-					let span = trace_span!("Decrementing listener handles for keyed fragment", dom_key);
-					let _enter = span.enter();
-					self.decrement_handlers(content, depth_limit - 1)
+						let span = trace_span!("Decrementing listener handles for keyed fragment", dom_key);
+						let _enter = span.enter();
+						self.decrement_handlers(content, depth_limit - 1)
 					})
 					.sum()
 			}
