@@ -2,7 +2,7 @@
 
 [![Lib.rs](https://img.shields.io/badge/Lib.rs-*-84f)](https://lib.rs/crates/lignin-dom)
 [![Crates.io](https://img.shields.io/crates/v/lignin-dom)](https://crates.io/crates/lignin-dom)
-[![Docs.rs](https://docs.rs/lignin-dom/badge.svg)](https://docs.rs/crates/lignin-dom)
+[![Docs.rs](https://docs.rs/lignin-dom/badge.svg)](https://docs.rs/lignin-dom)
 
 ![Rust 1.46](https://img.shields.io/static/v1?logo=Rust&label=&message=1.46&color=grey)
 [![CI](https://github.com/Tamschi/lignin-dom/workflows/CI/badge.svg?branch=develop)](https://github.com/Tamschi/lignin-dom/actions?query=workflow%3ACI+branch%3Adevelop)
