@@ -19,6 +19,7 @@ include = [
 	"CODE_OF_CONDUCT.md",
 	"LICENSE-*",
 	"README.md",
+	"SECURITY.md",
 ]
 publish = false
 
@@ -62,5 +63,5 @@ doc-comment = "0.3.3"
 git_info = "0.1.2"
 tracing-wasm = "0.2.0"
 version-sync = "0.9.1"
-wasm-bindgen-test = "0.3.23"
+wasm-bindgen-test = "0.3.24"
 web-sys = { version = "0.3.33", features = ["HtmlBodyElement", "HtmlCollection", "Window"] }

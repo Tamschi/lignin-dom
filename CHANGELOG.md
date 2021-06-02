@@ -18,6 +18,7 @@ TODO: Date
   * `lignin-dom` now avoids memory leaks when it fails to locate event bindings in the DOM and warns about the latter.
   * Duplicate `ReorderableFragment::dom_key`s now more often lead to panics, especially when `cfg!(debug_assertions) == true`.
     > This was disallowed before, but `lignin_dom` was more lenient in this regard than necessary.
+  * Updated to newer version of `rust-template` project base, which comes with CI improvements and a newly added SECURITY.md file.
 
 ## 0.0.3
 
