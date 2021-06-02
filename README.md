@@ -15,7 +15,7 @@
 
 A DOM differ for [lignin].
 
-Aside from diffing lignin `Node`s to adjust HTML elements, it's also possible to construct `Node` trees from HTML elements.
+Aside from diffing lignin `Node`s to adjust HTML, MathML and SVG elements, it's also possible to construct new `Node` trees from these DOM elements.
 
 To generate HTML strings, use [lignin-html] instead.
 
