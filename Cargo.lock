@@ -133,9 +133,9 @@ checksum = "789da6d93f1b866ffe175afc5322a4d76c038605a1c3319bb57b06967ca98a36"
 
 [[package]]
 name = "lignin"
-version = "0.0.7"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "972e3bfb434e6c785ca81c651c50a316b23325a7b72d4230ff5670f96238eb27"
+checksum = "fac24f5e1ecf47470f0ff28d4ecc3f177f668457798143bde944df0a9498f0d7"
 dependencies = [
  "lazy_static",
  "wasm-bindgen",
