@@ -316,7 +316,7 @@ impl DomDiffer {
 						} else {
 							// Help wanted: This is an inefficient algorithm.
 							//TODO: Test this thoroughly!
-							let mut map = hashbrown::HashMap::<usize, (&lignin::Node<ThreadBound>, Option<Vec<web_sys::Node>>)>::new();
+							let mut map = hashbrown::HashMap::<_, (&lignin::Node<ThreadBound>, Option<Vec<web_sys::Node>>)>::new();
 
 							// Create target slot index:
 							for b in rf_2 {
