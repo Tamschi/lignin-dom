@@ -9,6 +9,19 @@ use lignin::{callback_registry::CallbackSignature, CallbackRef, DomRef, EventBin
 use tracing::{error, info, instrument, level_filters::STATIC_MAX_LEVEL, trace, trace_span, warn, Level};
 use wasm_bindgen::{closure::Closure, throw_str, JsCast, JsValue, UnwrapThrowExt};
 
+/// Attached to a specific [`web_sys::Element`] during instantiation, this `struct` can be used to update its [***childNodes***](https://developer.mozilla.org/en-US/docs/Web/API/Node/childNodes).
+///
+/// Note that this does not include the [***Element***](https://developer.mozilla.org/en-US/docs/Web/API/element)
+/// it is attached to itself, and also does not include the [***Attr***](https://developer.mozilla.org/en-US/docs/Web/API/Attr)ibutes of that element.
+///
+/// # Safety
+///
+/// Event handlers are reference-counted per [`DomDiffer`] instance and memory-safe, including interactions with misbehaving [***JavaScript***](https://developer.mozilla.org/en-US/docs/Web/JavaScript) code.
+///
+/// However, associated event listeners will start throwing errors into [***JavaScript***](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
+/// if the instance is dropped.
+///
+/// They may also do so if the [`DomDiffer`] is [misused](`DomDiffer`#correct-use) in a way that causes handles to be dropped early.
 #[allow(clippy::type_complexity)]
 #[derive(Debug)]
 pub struct DomDiffer {
@@ -73,6 +86,7 @@ impl DomDiffer {
 		entry.as_ref().unwrap_throw()
 	}
 
+	/// # Correct Use
 	#[instrument(skip(vdom_a, vdom_b))]
 	pub fn update_child_nodes(&mut self, vdom_a: &[lignin::Node<'_, ThreadBound>], vdom_b: &[lignin::Node<'_, ThreadBound>], depth_limit: usize) {
 		let element = self.element.clone();
