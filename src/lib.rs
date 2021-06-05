@@ -14,6 +14,13 @@
 //!
 //! I recommend reading them, but you can always skip them without missing out on information needed to correctly use this library.
 //!
+//! ## RFC 2119 Blurb (modified stylization)
+//!
+//! The key words **must**, **must not**, **required**, **shall**, **shall
+//! not**, **should**, **should not**, **recommended**,  **may**, and
+//! **OPTIONAL** in this document are to be interpreted as described in
+//! [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+//!
 //! ## Web Terms
 //!
 //! Web terms are stylized ***bold italic*** and link to relevant documentation, usually on [MDN Web Docs](https://developer.mozilla.org/).
