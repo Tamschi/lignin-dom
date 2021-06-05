@@ -46,7 +46,7 @@
 //!
 //! In addition to this, [lignin-dom](`self`) obey's [lignin's implementation contract](lignin#implementation-contract).
 //! It won't touch siblings past those mentioned in the VDOM or attributes that do not appear in it.
-//! 
+//!
 //! > [***Attr***](https://developer.mozilla.org/en-US/docs/Web/API/Attr)ibutes that are to be added but unexpectedly already exist are overwritten while logging an [error](`tracing::error`).
 
 #[cfg(doctest)]
