@@ -1,7 +1,6 @@
 #![allow(clippy::module_name_repetitions)]
 
-//! Functions and types for converting (parts of) a live [***DOM***](https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model)
-//! tree into [`lignin::Vdom`] types.
+//! Functions and types for converting (parts of) a live DOM tree into [`lignin::Vdom`] types.
 //!
 //! An [`Allocator`] must be provided, as [lignin]'s public structs are unable to own heap storage for their dependencies.
 
