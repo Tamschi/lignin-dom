@@ -127,7 +127,7 @@
 //! ## Starting a DOM Tree from Scratch
 //!
 //! When rendering into an empty element, you can simply start with `&[]` as initial `vdom_a` parameter.
-//! 
+//!
 //! This also works for non-empty elements where you'd like to insert your app at the beginning of the child node list.
 //!
 //! > I recommend not doing this except for systems where you can control every aspect of execution and startup UX is of no concern.
