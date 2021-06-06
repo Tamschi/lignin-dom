@@ -66,6 +66,10 @@
 //!
 //! # Common Use Cases
 //!
+//! Items necessary for the following uses this crate are available as [re-exports](`self`#reexports).
+//!
+//! See the [modules](`self`#modules) for more specialized parts of the API.
+//!
 //! ## Hydration
 //!
 //! To hydrate an existing DOM structure, sent serialized as HTML from the server or otherwise,
