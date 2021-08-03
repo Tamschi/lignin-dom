@@ -63,5 +63,5 @@ doc-comment = "0.3.3"
 git_info = "0.1.2"
 tracing-wasm = "0.2.0"
 version-sync = "0.9.1"
-wasm-bindgen-test = "0.3.24"
+wasm-bindgen-test = "0.3.25"
 web-sys = { version = "0.3.52", features = ["HtmlBodyElement", "HtmlCollection", "Window"] }
