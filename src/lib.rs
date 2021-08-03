@@ -1,6 +1,6 @@
 #![doc(html_root_url = "https://docs.rs/lignin-dom/0.0.3")]
 #![warn(clippy::pedantic)]
-#![allow(clippy::single_match_else)]
+#![allow(clippy::semicolon_if_nothing_returned, clippy::single_match_else)]
 
 //! [lignin-dom](`self`) is a [***DOM***](https://developer.mozilla.org/en-US/docs/Web/API/Document_Object_Model)
 //! loader and differ compatible with the [lignin] VDOM data structure library.
