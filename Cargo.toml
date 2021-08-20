@@ -37,7 +37,7 @@ log-paths = [] #TODO: Log VDOM paths in error messages, which is expensive.
 
 [dependencies]
 hashbrown = "0.11.0"
-js-sys = "0.3.48"
+js-sys = "0.3.53"
 lignin = { version = "0.1.0", features = ["callbacks"] } # public
 num-traits = "0.2.14"
 tracing = "0.1.25"
